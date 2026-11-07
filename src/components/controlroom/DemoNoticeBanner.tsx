@@ -8,32 +8,64 @@ import { useCafeStore } from "@/lib/store";
 export default function DemoNoticeBanner() {
   const { user } = useAuth();
   const { isRealtimeConnected } = useCafeStore();
-  const [supabaseStatus, setSupabaseStatus] = useState<string>("Verifying...");
+  const [dbState, setDbState] = useState<{
+    statusText: string;
+    isMigrated: boolean;
+    isConnected: boolean;
+  }>({
+    statusText: "Probing Supabase...",
+    isMigrated: false,
+    isConnected: false,
+  });
 
   useEffect(() => {
     fetch("/api/supabase/status")
       .then((res) => res.json())
       .then((data) => {
         if (data.connected && data.migrated) {
-          setSupabaseStatus("Supabase DB: Active & Migrated");
+          setDbState({
+            statusText: "Cloud DB Verified (All 19 Tables Active)",
+            isMigrated: true,
+            isConnected: true,
+          });
         } else if (data.connected && !data.migrated) {
-          setSupabaseStatus("Supabase DB: Connected (Migrations Pending in SQL Editor)");
+          setDbState({
+            statusText: "Supabase Connected — Migrations Pending in SQL Editor",
+            isMigrated: false,
+            isConnected: true,
+          });
         } else {
-          setSupabaseStatus("Supabase DB: Ready for Cloud Sync");
+          setDbState({
+            statusText: "Cloud Connection Pending",
+            isMigrated: false,
+            isConnected: false,
+          });
         }
       })
       .catch(() => {
-        setSupabaseStatus("Dual Engine (Cloud API + Local Bus)");
+        setDbState({
+          statusText: "Local Resilient Mode",
+          isMigrated: false,
+          isConnected: false,
+        });
       });
   }, []);
 
   return (
     <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-950 flex items-center justify-between flex-wrap gap-2">
       <div className="flex items-center gap-2">
-        <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span className="font-bold">Phase 3 Production Engine:</span>
+        <span
+          className={`flex h-2 w-2 rounded-full ${
+            dbState.isMigrated
+              ? "bg-emerald-500 animate-pulse"
+              : dbState.isConnected
+              ? "bg-amber-500 animate-pulse"
+              : "bg-zinc-400"
+          }`}
+        />
+        <span className="font-bold">Phase 3 Security &amp; Database Engine:</span>
         <span className="text-zinc-700 hidden sm:inline">
-          RLS Staff Protection Active &bull; {supabaseStatus}
+          Server Auth Guard &bull; {dbState.statusText}
         </span>
       </div>
 

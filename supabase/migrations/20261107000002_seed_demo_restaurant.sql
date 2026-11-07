@@ -171,7 +171,20 @@ BEGIN
         'vegan', 'Citrusy, Refreshingly Smooth & Chocolatey', 'Cold', 'None', ARRAY[]::TEXT[],
         'Signature Nitro', true,
         '[]'::jsonb
-    );
+    )
+    ON CONFLICT (restaurant_id, name) DO UPDATE SET
+        price = EXCLUDED.price,
+        description = EXCLUDED.description,
+        image_url = EXCLUDED.image_url,
+        ingredients = EXCLUDED.ingredients,
+        classification = EXCLUDED.classification,
+        flavour = EXCLUDED.flavour,
+        serving_temperature = EXCLUDED.serving_temperature,
+        spice_level = EXCLUDED.spice_level,
+        allergens = EXCLUDED.allergens,
+        badge = EXCLUDED.badge,
+        is_featured = EXCLUDED.is_featured,
+        customization_groups = EXCLUDED.customization_groups;
 
 END $$;
 

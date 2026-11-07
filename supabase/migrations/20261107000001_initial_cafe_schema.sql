@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Migration: 20261107000001_initial_cafe_schema.sql
 -- Description: Core schema for The Business Work — Café Website & QR Ordering Platform
--- Features: 18 tables, UUID keys, foreign key constraints, indexes, RLS, and Realtime
+-- Features: 19 tables, UUID keys, foreign key constraints, indexes, RLS, and Realtime
 -- =============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS public.menu_items (
     is_available BOOLEAN DEFAULT true,
     is_featured BOOLEAN DEFAULT false,
     customization_groups JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT now()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(restaurant_id, name)
 );
 
 -- 7. Customers (Identified by unique Indian 10-digit mobile number)
@@ -295,20 +296,50 @@ ALTER TABLE public.customer_visits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loyalty_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reward_redemptions ENABLE ROW LEVEL SECURITY;
 
--- Public customer read policies for active catalog
+-- 1. Public customer read policies for active catalog (anon & authenticated)
 CREATE POLICY "Public read active restaurants" ON public.restaurants FOR SELECT USING (true);
 CREATE POLICY "Public read restaurant settings" ON public.restaurant_settings FOR SELECT USING (true);
 CREATE POLICY "Public read active tables" ON public.restaurant_tables FOR SELECT USING (is_active = true);
 CREATE POLICY "Public read active categories" ON public.menu_categories FOR SELECT USING (is_active = true);
 CREATE POLICY "Public read active menu items" ON public.menu_items FOR SELECT USING (is_available = true);
 
--- Realtime publication for multi-device sync
+-- 2. Authenticated Staff access policies (Protected Control Room operations)
+CREATE POLICY "Staff read orders" ON public.orders FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff update orders" ON public.orders FOR UPDATE TO authenticated USING (true);
+CREATE POLICY "Staff read order items" ON public.order_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read bills" ON public.bills FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read bill items" ON public.bill_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read payments" ON public.payments FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read payment audits" ON public.payment_audit_events FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read dining sessions" ON public.dining_sessions FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read customers" ON public.customers FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read loyalty" ON public.loyalty_accounts FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read visits" ON public.customer_visits FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff read staff directory" ON public.restaurant_staff FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Staff update tables" ON public.restaurant_tables FOR UPDATE TO authenticated USING (true);
+
+-- =============================================================================
+-- REALTIME PUBLICATION FOR LIVE MULTI-DEVICE SYNCHRONIZATION
+-- =============================================================================
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.orders, public.order_items, public.bills, public.restaurant_tables;
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.bills;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.restaurant_tables;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
   END IF;
-EXCEPTION WHEN OTHERS THEN
-  NULL;
 END $$;
 

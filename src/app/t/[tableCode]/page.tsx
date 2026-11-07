@@ -198,26 +198,29 @@ export default function TableOrderingPage({ params }: PageProps) {
     }
   };
 
-  const handleOrderConfirmed = (generatedOrderNo: string) => {
-    // Actually dispatch to our reactive store!
-    placeOrder({
-      tableCode: formattedCode,
-      customerName: customerName || "Guest",
-      customerPhone: customerPhone || "9999999999",
-      items: cartItems.map((ci) => ({
-        menuItemId: ci.menuItem.id,
-        name: ci.menuItem.name,
-        quantity: ci.quantity,
-        unitPrice: ci.unitPrice,
-        totalPrice: ci.totalPrice,
-        customizations: ci.selectedCustomizations,
-        classification: ci.menuItem.classification,
-      })),
-      notes: kitchenNotes || undefined,
-    });
+  const handleOrderConfirmed = async (generatedOrderNo: string) => {
+    try {
+      await placeOrder({
+        tableCode: formattedCode,
+        customerName: customerName || "Guest",
+        customerPhone: customerPhone || "9999999999",
+        items: cartItems.map((ci) => ({
+          menuItemId: ci.menuItem.id,
+          name: ci.menuItem.name,
+          quantity: ci.quantity,
+          unitPrice: ci.unitPrice,
+          totalPrice: ci.totalPrice,
+          customizations: ci.selectedCustomizations,
+          classification: ci.menuItem.classification,
+        })),
+        notes: kitchenNotes || undefined,
+      });
 
-    setCartItems([]);
-    setKitchenNotes("");
+      setCartItems([]);
+      setKitchenNotes("");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to place order.");
+    }
   };
 
   const totalCartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);

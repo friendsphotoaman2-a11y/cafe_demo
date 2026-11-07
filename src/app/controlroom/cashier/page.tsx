@@ -61,10 +61,10 @@ export default function ControlRoomCashierPage() {
 
   const selectedBill: TableSessionBill | null = getTableSessionBill(selectedTableCode);
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (!selectedBill || selectedBill.isPaid) return;
 
-    const res = settleTableBill({
+    const res = await settleTableBill({
       tableCode: selectedBill.tableCode,
       paymentMethod,
       transactionRef: transactionRef.trim() || undefined,
@@ -80,6 +80,9 @@ export default function ControlRoomCashierPage() {
       );
       setTransactionRef("");
       setTimeout(() => setNotification(null), 5000);
+    } else {
+      setNotification(`Settlement failed: ${res.error || "Permission denied."}`);
+      setTimeout(() => setNotification(null), 6000);
     }
   };
 

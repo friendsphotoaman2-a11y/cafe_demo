@@ -305,10 +305,10 @@ export default function ControlRoomSettingsPage() {
                 </span>
               </div>
               <p className="font-mono text-zinc-800 text-[11px] break-all">
-                https://cqlxbgtzltsedpointmx.supabase.co
+                {process.env.NEXT_PUBLIC_SUPABASE_URL || "Configured via environment"}
               </p>
               <p className="text-[10px] text-zinc-500">
-                Project Ref: <span className="font-mono font-bold text-zinc-700">cqlxbgtzltsedpointmx</span> (tbw-cafe-demo-v2)
+                Project Host: <span className="font-mono font-bold text-zinc-700">{process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname : "Configured"}</span>
               </p>
             </div>
 

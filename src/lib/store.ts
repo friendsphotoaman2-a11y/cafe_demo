@@ -238,15 +238,62 @@ export function useCafeStore() {
     }[];
     notes?: string;
   }): Promise<CafeOrder> => {
+    const formattedCode = params.tableCode.padStart(2, "0");
+    const storedDiningToken = typeof window !== "undefined"
+      ? localStorage.getItem(`tbw_dining_token_${formattedCode}`)
+      : null;
+
+    let serverOrder: CafeOrder | null = null;
+
     // 1. Call server API route for authoritative processing
     try {
-      fetch("/api/orders", {
+      const res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-      }).catch((err) => console.log("Server API order broadcast:", err));
-    } catch {
-      // Background attempt
+        headers: {
+          "Content-Type": "application/json",
+          ...(storedDiningToken ? { "x-dining-session-token": storedDiningToken } : {}),
+        },
+        body: JSON.stringify({
+          ...params,
+          tableCode: formattedCode,
+          diningSessionToken: storedDiningToken,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.order) {
+        serverOrder = {
+          id: data.order.id,
+          orderNumber: data.order.orderNumber,
+          tableCode: data.order.tableCode,
+          customerName: data.order.customerName,
+          customerPhone: data.order.customerPhone,
+          items: data.order.items,
+          subtotal: data.order.subtotal,
+          taxAmount: data.order.taxAmount,
+          totalAmount: data.order.totalAmount,
+          status: data.order.status || "new",
+          paymentStatus: data.order.paymentStatus || "unpaid",
+          notes: data.order.notes,
+          createdAt: data.order.createdAt || "Just now",
+          timestamp: Date.now(),
+          estimatedPrepMinutes: 12,
+        };
+
+        if (data.diningSessionToken && typeof window !== "undefined") {
+          localStorage.setItem(`tbw_dining_token_${formattedCode}`, data.diningSessionToken);
+        }
+      } else if (!res.ok) {
+        console.warn("Server order rejection:", data.error);
+        if (res.status === 409) {
+          throw new Error(data.error || `Table ${formattedCode} is occupied by an active session.`);
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("occupied")) {
+        throw err;
+      }
+      console.log("Server API order attempt:", err);
     }
 
     // 2. Synchronize store state
@@ -270,10 +317,10 @@ export function useCafeStore() {
     const generatedOrderNumber = `#TBW-${Math.floor(1040 + currentOrders.length + 1)}`;
     const newOrderId = `ord-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
 
-    const newOrder: CafeOrder = {
+    const newOrder: CafeOrder = serverOrder || {
       id: newOrderId,
       orderNumber: generatedOrderNumber,
-      tableCode: params.tableCode,
+      tableCode: formattedCode,
       customerName: params.customerName,
       customerPhone: params.customerPhone,
       items: params.items,
@@ -291,13 +338,13 @@ export function useCafeStore() {
     setStoredJson(STORAGE_KEY_ORDERS, [newOrder, ...currentOrders]);
 
     const updatedTables = currentTables.map((t) => {
-      if (t.code === params.tableCode) {
+      if (t.code === formattedCode) {
         return {
           ...t,
           status: "order_pending" as const,
           currentCustomerName: params.customerName,
           currentCustomerPhone: params.customerPhone,
-          currentOrderId: newOrderId,
+          currentOrderId: newOrder.id,
           lastActiveTime: "Just now",
         };
       }
@@ -485,22 +532,38 @@ export function useCafeStore() {
   );
 
   // --- CASHIER COUNTER PAYMENT CONFIRMATION ---
-  const settleTableBill = (params: {
+  const settleTableBill = async (params: {
     tableCode: string;
     paymentMethod: PaymentMethod;
     transactionRef?: string;
     cashierName: string;
     amountPaid?: number;
-  }): { success: boolean; error?: string } => {
-    // Notify server
+  }): Promise<{ success: boolean; error?: string }> => {
+    const formattedCode = params.tableCode.padStart(2, "0");
+
+    // Authoritative Server Settlement Call
     try {
-      fetch("/api/cashier/settle", {
+      const res = await fetch("/api/cashier/settle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-      }).catch((err) => console.log("Server API settle broadcast:", err));
-    } catch {
-      // Background attempt
+        body: JSON.stringify({
+          tableCode: formattedCode,
+          paymentMethod: params.paymentMethod,
+          transactionRef: params.transactionRef,
+          cashierName: params.cashierName,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || "Server rejected bill settlement." };
+      }
+    } catch (err: unknown) {
+      console.warn("Server settle call:", err);
+    }
+
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(`tbw_dining_token_${formattedCode}`);
     }
 
     const currentOrders = getStoredJson<CafeOrder[]>(
@@ -516,7 +579,6 @@ export function useCafeStore() {
       DEMO_CUSTOMERS
     );
 
-    const formattedCode = params.tableCode.padStart(2, "0");
     const unpaidTableOrders = currentOrders.filter(
       (o) => o.tableCode === formattedCode && o.paymentStatus === "unpaid"
     );

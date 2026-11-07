@@ -111,24 +111,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: StaffRole,
     pin?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const profile = STAFF_PROFILES[role];
-    const newUser: StaffUser = {
-      id: `staff-${role}-${Date.now().toString(36)}`,
-      email: profile.email,
-      fullName: profile.name,
-      role,
-      isAuthenticated: true,
-      authMethod: "staff_pin",
-    };
+    try {
+      const res = await fetch("/api/auth/staff-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, pin }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || "Authentication failed." };
+      }
 
-    setUser(newUser);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
+      setUser(data.user);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data.user));
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Network error during authentication",
+      };
     }
-    return { success: true };
   };
 
   const logout = async () => {
+    try {
+      await fetch("/api/auth/staff-logout", { method: "POST" });
+    } catch {
+      // Ignored
+    }
     try {
       await supabase.auth.signOut();
     } catch {
