@@ -425,7 +425,7 @@ export default function ControlRoomCashierPage() {
                 No orders for Table {selectedTableCode}
               </h4>
               <p className="text-xs text-zinc-400">
-                Select an active table on the left or simulate a new order at{" "}
+                Select an active table on the left or place a new order at{" "}
                 <Link
                   href={`/t/${selectedTableCode}`}
                   target="_blank"
@@ -452,7 +452,7 @@ export default function ControlRoomCashierPage() {
             </div>
 
             <p className="text-xs text-zinc-600 leading-relaxed">
-              In this demo audit, voiding a payment marks the table orders as unpaid again so you can demonstrate payment retry or dispute handling.
+              Voiding a payment marks the table orders as unpaid again for dispute handling or payment retry.
             </p>
 
             <form onSubmit={handleVoidPayment} className="space-y-3">

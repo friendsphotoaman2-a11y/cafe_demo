@@ -75,7 +75,14 @@ export default function ControlRoomCustomersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {filteredCustomers.map((cust) => (
+              {filteredCustomers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-zinc-500 text-xs">
+                    No customer profiles yet. New guest profiles will be recorded here automatically as orders are placed via table QR codes.
+                  </td>
+                </tr>
+              ) : (
+                filteredCustomers.map((cust) => (
                 <tr key={cust.id} className="hover:bg-zinc-50/60 transition">
                   {/* Name */}
                   <td className="py-3.5 px-4 font-bold text-zinc-900">
@@ -137,7 +144,7 @@ export default function ControlRoomCustomersPage() {
                     {cust.favoriteItem}
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

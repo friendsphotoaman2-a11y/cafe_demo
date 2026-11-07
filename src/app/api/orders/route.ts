@@ -357,7 +357,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      hasActiveSession: true,
       rememberedCustomer: rememberedCustomer || undefined,
       session: {
         id: matchedSession.id,

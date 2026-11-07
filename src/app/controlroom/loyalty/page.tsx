@@ -101,12 +101,17 @@ export default function ControlRoomLoyaltyPage() {
             Guest Loyalty Cards Snapshot
           </h3>
           <span className="text-xs text-zinc-500">
-            Connected demo store state
+            Live Store State
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {customers.map((cust) => (
+        {customers.length === 0 ? (
+          <div className="rounded-3xl border border-zinc-200 bg-white p-12 text-center text-xs text-zinc-400">
+            No customer loyalty accounts recorded yet. Digital stamp cards are automatically activated when guests place their first table QR order.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {customers.map((cust) => (
             <div
               key={cust.id}
               className={`rounded-3xl border p-5 space-y-4 transition bg-white shadow-xs ${
@@ -188,6 +193,7 @@ export default function ControlRoomLoyaltyPage() {
             </div>
           ))}
         </div>
+      )}
       </div>
     </div>
   );

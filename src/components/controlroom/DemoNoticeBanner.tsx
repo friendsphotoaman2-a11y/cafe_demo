@@ -63,7 +63,7 @@ export default function DemoNoticeBanner() {
               : "bg-zinc-400"
           }`}
         />
-        <span className="font-bold">Phase 3 Security &amp; Database Engine:</span>
+        <span className="font-bold">Cloud Database &amp; Operations Engine:</span>
         <span className="text-zinc-700 hidden sm:inline">
           Server Auth Guard &bull; {dbState.statusText}
         </span>

@@ -21,10 +21,21 @@ import {
 } from "./demo-data";
 import { createClient } from "@/lib/supabase/client";
 
-const STORAGE_KEY_ORDERS = "tbw_cafe_orders_v3";
-const STORAGE_KEY_TABLES = "tbw_cafe_tables_v3";
-const STORAGE_KEY_CUSTOMERS = "tbw_cafe_customers_v3";
-const STORAGE_KEY_SESSION = "tbw_cafe_customer_session_v3";
+const STORAGE_KEY_ORDERS = "tbw_cafe_orders_v4";
+const STORAGE_KEY_TABLES = "tbw_cafe_tables_v4";
+const STORAGE_KEY_CUSTOMERS = "tbw_cafe_customers_v4";
+const STORAGE_KEY_SESSION = "tbw_cafe_customer_session_v4";
+
+if (typeof window !== "undefined") {
+  // Purge any legacy demo storage keys to ensure a clean operational slate
+  [
+    "tbw_cafe_orders_v1", "tbw_cafe_orders_v2", "tbw_cafe_orders_v3",
+    "tbw_cafe_tables_v1", "tbw_cafe_tables_v2", "tbw_cafe_tables_v3",
+    "tbw_cafe_customers_v1", "tbw_cafe_customers_v2", "tbw_cafe_customers_v3"
+  ].forEach((k) => {
+    try { localStorage.removeItem(k); } catch {}
+  });
+}
 
 export interface CustomerSession {
   name: string;

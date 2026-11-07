@@ -123,7 +123,14 @@ export default function ControlRoomOrdersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {filteredOrders.map((ord) => (
+              {filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-zinc-500 text-xs">
+                    No active orders at this time. Live orders will appear here automatically when placed from any table QR code.
+                  </td>
+                </tr>
+              ) : (
+                filteredOrders.map((ord) => (
                 <tr key={ord.id} className="hover:bg-zinc-50/60 transition">
                   {/* Order Number */}
                   <td className="py-3.5 px-4 font-bold text-zinc-900">
@@ -192,7 +199,7 @@ export default function ControlRoomOrdersPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

@@ -62,31 +62,31 @@ export default function ControlRoomDashboardPage() {
         <div className="rounded-2xl bg-emerald-50 border border-emerald-300 p-4 text-emerald-900 flex items-center gap-3 animate-fade-in shadow-xs">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
           <span className="text-xs font-bold">
-            Demo fixtures reset to initial clean demonstration state!
+            Floor state reset to clean operational slate! All tables are available.
           </span>
         </div>
       )}
 
-      {/* Top Banner with Demo Simulation Explanation & Reset CTA */}
-      <div className="rounded-3xl border border-amber-300 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-white p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Top Banner: Live Operations HQ */}
+      <div className="rounded-3xl border border-zinc-200 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 text-white p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
-            <h3 className="font-serif font-bold text-base text-zinc-900">
-              Interactive Multi-Tab Demonstration Mode
+            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <h3 className="font-serif font-bold text-base text-white">
+              Live Cloud Operations HQ
             </h3>
           </div>
-          <p className="text-xs text-zinc-600 max-w-2xl leading-relaxed">
-            All customer table orders, kitchen ticket workflows, and cashier counter payments share a unified browser storage bus. Open a customer view in one tab and this control room in another to see live cross-tab synchronization.
+          <p className="text-xs text-zinc-300 max-w-2xl leading-relaxed">
+            Connected to Supabase Cloud Database. Table orders placed by customers arrive here in real time. Kitchen updates and cashier settlements sync across all connected devices.
           </p>
         </div>
 
         <button
           onClick={() => setIsResetModalOpen(true)}
-          className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-xs font-bold text-amber-950 hover:bg-amber-50 transition shadow-xs"
+          className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-xs font-bold text-zinc-200 hover:bg-zinc-700 hover:text-white transition shadow-xs"
         >
-          <RotateCcw className="h-3.5 w-3.5 text-amber-700" />
-          <span>Reset Demo Data</span>
+          <RotateCcw className="h-3.5 w-3.5 text-zinc-400" />
+          <span>Reset Floor State</span>
         </button>
       </div>
 
@@ -96,7 +96,7 @@ export default function ControlRoomDashboardPage() {
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              Paid Demo Sales
+              Settled Counter Sales
             </span>
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
               <DollarSign className="h-5 w-5" />
@@ -302,17 +302,17 @@ export default function ControlRoomDashboardPage() {
       {isResetModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
           <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-zinc-200 space-y-4">
-            <div className="flex items-center gap-2 text-amber-600 border-b pb-3">
-              <AlertTriangle className="h-5 w-5" />
+            <div className="flex items-center gap-2 text-zinc-900 border-b pb-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
               <h3 className="font-serif text-lg font-bold text-zinc-900">
-                Confirm Reset Demo Data
+                Confirm Floor State Reset
               </h3>
             </div>
 
             <p className="text-xs text-zinc-600 leading-relaxed">
-              This will reset the browser demonstration storage back to the initial 12 tables and baseline orders.
+              This will reset all 12 tables back to clean, available status and clear local floor caches.
               <strong className="block text-zinc-900 mt-2">
-                Note: Project code files and future Supabase databases will never be affected.
+                Live Supabase cloud orders and database records will remain secure.
               </strong>
             </p>
 
@@ -325,9 +325,9 @@ export default function ControlRoomDashboardPage() {
               </button>
               <button
                 onClick={handleConfirmReset}
-                className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-400"
+                className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-bold text-white hover:bg-zinc-800"
               >
-                Reset Demo Store
+                Reset Floor Slate
               </button>
             </div>
           </div>
