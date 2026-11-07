@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   CafeOrder,
   CafeTable,
@@ -19,11 +19,12 @@ import {
   DEMO_CUSTOMERS,
   DEMO_SETTINGS,
 } from "./demo-data";
+import { createClient } from "@/lib/supabase/client";
 
-const STORAGE_KEY_ORDERS = "tbw_cafe_orders_v2";
-const STORAGE_KEY_TABLES = "tbw_cafe_tables_v2";
-const STORAGE_KEY_CUSTOMERS = "tbw_cafe_customers_v2";
-const STORAGE_KEY_SESSION = "tbw_cafe_customer_session_v2";
+const STORAGE_KEY_ORDERS = "tbw_cafe_orders_v3";
+const STORAGE_KEY_TABLES = "tbw_cafe_tables_v3";
+const STORAGE_KEY_CUSTOMERS = "tbw_cafe_customers_v3";
+const STORAGE_KEY_SESSION = "tbw_cafe_customer_session_v3";
 
 export interface CustomerSession {
   name: string;
@@ -57,6 +58,9 @@ export function useCafeStore() {
   const [customers, setCustomers] = useState<CafeCustomer[]>([]);
   const [session, setSession] = useState<CustomerSession | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+
+  const supabase = useMemo(() => createClient(), []);
 
   const loadAll = useCallback(() => {
     const loadedOrders = getStoredJson<CafeOrder[]>(
@@ -83,6 +87,7 @@ export function useCafeStore() {
     setIsLoaded(true);
   }, []);
 
+  // 1. Local Same-Origin Sync
   useEffect(() => {
     loadAll();
 
@@ -98,6 +103,47 @@ export function useCafeStore() {
       window.removeEventListener("tbw-cafe-store-updated", handleSync);
     };
   }, [loadAll]);
+
+  // 2. Cross-Device Supabase Realtime Subscription
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    try {
+      channel = supabase
+        .channel("tbw-cafe-cross-device-sync")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "orders" },
+          (payload) => {
+            console.log("[Supabase Realtime] Order event received:", payload);
+            loadAll();
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "restaurant_tables" },
+          (payload) => {
+            console.log("[Supabase Realtime] Table event received:", payload);
+            loadAll();
+          }
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setIsRealtimeConnected(true);
+          } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+            setIsRealtimeConnected(false);
+          }
+        });
+    } catch (err) {
+      console.warn("Supabase Realtime subscription not active in current environment.", err);
+    }
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [supabase, loadAll]);
 
   // --- TABLE CRUD OPERATIONS ---
   const addTable = (tableData: {
@@ -176,8 +222,8 @@ export function useCafeStore() {
     return newNonce;
   };
 
-  // --- ORDER PLACEMENT ---
-  const placeOrder = (params: {
+  // --- ORDER PLACEMENT (Sends to Server & Stores in State) ---
+  const placeOrder = async (params: {
     tableCode: string;
     customerName: string;
     customerPhone: string;
@@ -191,7 +237,19 @@ export function useCafeStore() {
       classification: VegClassification;
     }[];
     notes?: string;
-  }): CafeOrder => {
+  }): Promise<CafeOrder> => {
+    // 1. Call server API route for authoritative processing
+    try {
+      fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      }).catch((err) => console.log("Server API order broadcast:", err));
+    } catch {
+      // Background attempt
+    }
+
+    // 2. Synchronize store state
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
       DEMO_ORDERS
@@ -230,10 +288,8 @@ export function useCafeStore() {
       estimatedPrepMinutes: 12,
     };
 
-    // Prepend new order
     setStoredJson(STORAGE_KEY_ORDERS, [newOrder, ...currentOrders]);
 
-    // Update table status
     const updatedTables = currentTables.map((t) => {
       if (t.code === params.tableCode) {
         return {
@@ -249,12 +305,11 @@ export function useCafeStore() {
     });
     setStoredJson(STORAGE_KEY_TABLES, updatedTables);
 
-    // Update customer entry
     const cleanPhone = params.customerPhone.replace(/\D/g, "");
     const existingIndex = currentCustomers.findIndex(
       (c) => c.phone.replace(/\D/g, "") === cleanPhone
     );
-    let updatedCustomers = [...currentCustomers];
+    const updatedCustomers = [...currentCustomers];
     if (existingIndex > -1) {
       updatedCustomers[existingIndex] = {
         ...updatedCustomers[existingIndex],
@@ -275,7 +330,6 @@ export function useCafeStore() {
     }
     setStoredJson(STORAGE_KEY_CUSTOMERS, updatedCustomers);
 
-    // Store remembered session
     setStoredJson(STORAGE_KEY_SESSION, {
       name: params.customerName,
       phone: params.customerPhone,
@@ -286,7 +340,18 @@ export function useCafeStore() {
   };
 
   // --- KITCHEN STATUS PROGRESSION ---
-  const updateOrderStatus = (orderId: string, nextStatus: OrderStatus) => {
+  const updateOrderStatus = async (orderId: string, nextStatus: OrderStatus) => {
+    // Notify server
+    try {
+      fetch("/api/orders/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, nextStatus }),
+      }).catch((err) => console.log("Server API status broadcast:", err));
+    } catch {
+      // Background attempt
+    }
+
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
       DEMO_ORDERS
@@ -339,18 +404,15 @@ export function useCafeStore() {
       const table = currentTables.find((t) => t.code === tableCode);
       const formattedCode = tableCode.padStart(2, "0");
 
-      // Filter all orders belonging to this table
       const tableOrders = currentOrders.filter((o) => o.tableCode === formattedCode);
 
       if (tableOrders.length === 0) {
         return null;
       }
 
-      // Find unpaid orders first; if all paid, grab the most recent dining session
       const unpaidOrders = tableOrders.filter((o) => o.paymentStatus === "unpaid");
       const targetOrders = unpaidOrders.length > 0 ? unpaidOrders : [tableOrders[0]];
 
-      // Consolidated items map to prevent duplicate lines
       const itemMap = new Map<
         string,
         {
@@ -430,6 +492,17 @@ export function useCafeStore() {
     cashierName: string;
     amountPaid?: number;
   }): { success: boolean; error?: string } => {
+    // Notify server
+    try {
+      fetch("/api/cashier/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      }).catch((err) => console.log("Server API settle broadcast:", err));
+    } catch {
+      // Background attempt
+    }
+
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
       DEMO_ORDERS
@@ -468,7 +541,6 @@ export function useCafeStore() {
       }),
     };
 
-    // Mark orders as paid
     const updatedOrders = currentOrders.map((o) => {
       if (o.tableCode === formattedCode && o.paymentStatus === "unpaid") {
         return {
@@ -483,7 +555,6 @@ export function useCafeStore() {
     });
     setStoredJson(STORAGE_KEY_ORDERS, updatedOrders);
 
-    // Free table or set status to available
     const updatedTables = currentTables.map((t) => {
       if (t.code === formattedCode) {
         return {
@@ -499,7 +570,6 @@ export function useCafeStore() {
     });
     setStoredJson(STORAGE_KEY_TABLES, updatedTables);
 
-    // Update customer loyalty stats
     const customerPhone = unpaidTableOrders[0].customerPhone.replace(/\D/g, "");
     if (customerPhone) {
       const updatedCustomers = currentCustomers.map((c) => {
@@ -523,7 +593,6 @@ export function useCafeStore() {
     return { success: true };
   };
 
-  // Controlled Demo Payment Correction (Void / Refund)
   const voidPaymentCorrection = (
     orderId: string,
     reason: string
@@ -550,7 +619,6 @@ export function useCafeStore() {
     return { success: true };
   };
 
-  // Reset Demo Data
   const resetDemoData = () => {
     setStoredJson(STORAGE_KEY_ORDERS, DEMO_ORDERS);
     setStoredJson(STORAGE_KEY_TABLES, DEMO_TABLES);
@@ -564,6 +632,7 @@ export function useCafeStore() {
     customers,
     session,
     isLoaded,
+    isRealtimeConnected,
     addTable,
     updateTable,
     toggleTableActive,

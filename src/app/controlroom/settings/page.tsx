@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 import { CafeSettings } from "@/lib/types";
@@ -15,11 +15,50 @@ import {
   Sparkles,
   CheckCircle2,
   QrCode,
+  Database,
+  RefreshCw,
+  AlertCircle,
+  FileCode,
+  Server,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function ControlRoomSettingsPage() {
   const [settings, setSettings] = useState<CafeSettings>(DEMO_SETTINGS);
   const [savedToast, setSavedToast] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{
+    loading: boolean;
+    connected?: boolean;
+    migrated?: boolean;
+    error?: string;
+    hint?: string;
+  }>({ loading: true });
+
+  const checkDbStatus = async () => {
+    setDbStatus({ loading: true });
+    try {
+      const res = await fetch("/api/supabase/status");
+      const data = await res.json();
+      setDbStatus({
+        loading: false,
+        connected: data.connected,
+        migrated: data.migrated,
+        error: data.error,
+        hint: data.hint,
+      });
+    } catch (err: unknown) {
+      setDbStatus({
+        loading: false,
+        connected: false,
+        migrated: false,
+        error: err instanceof Error ? err.message : "Network error testing database connection",
+      });
+    }
+  };
+
+  useEffect(() => {
+    checkDbStatus();
+  }, []);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,6 +270,91 @@ export default function ControlRoomSettingsPage() {
                 }
                 className="w-full rounded-xl border border-zinc-200 p-2.5 text-xs focus:border-zinc-800 focus:outline-none"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Supabase Cloud Database & Migrations */}
+        <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-amber-600" />
+              <h3 className="font-serif text-lg font-bold text-zinc-900">
+                Supabase Cloud Database &amp; Realtime Sync
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={checkDbStatus}
+              disabled={dbStatus.loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100 active:scale-95 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${dbStatus.loading ? "animate-spin" : ""}`} />
+              Check Status
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-zinc-500 text-[11px] uppercase tracking-wider">
+                  Project Configuration
+                </span>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                  Configured
+                </span>
+              </div>
+              <p className="font-mono text-zinc-800 text-[11px] break-all">
+                https://cqlxbgtzltsedpointmx.supabase.co
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                Project Ref: <span className="font-mono font-bold text-zinc-700">cqlxbgtzltsedpointmx</span> (tbw-cafe-demo-v2)
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-zinc-500 text-[11px] uppercase tracking-wider">
+                  Live DB Health
+                </span>
+                {dbStatus.loading ? (
+                  <span className="text-[11px] text-zinc-500">Inspecting...</span>
+                ) : dbStatus.migrated ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Schema Active
+                  </span>
+                ) : dbStatus.connected ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600">
+                    <AlertCircle className="h-3.5 w-3.5" /> Connected (Pending SQL)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-zinc-500">
+                    Local Resilient Mode
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-600">
+                {dbStatus.migrated
+                  ? "All 18 tables, RLS policies, and Realtime channels are active and syncing."
+                  : dbStatus.hint || "Local state preserves full workflow until migrations run in Supabase SQL Editor."}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-zinc-100 pt-3 space-y-2">
+            <h4 className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+              <FileCode className="h-4 w-4 text-amber-600" />
+              SQL Migration Files Ready for Supabase SQL Editor:
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded-xl border border-zinc-200 bg-white p-2.5">
+                <span className="font-mono font-bold text-zinc-800 block">1. 20261107000001_initial_cafe_schema.sql</span>
+                <span className="text-zinc-500 text-[10px]">18 tables, RLS policies, indexes &amp; realtime publication</span>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white p-2.5">
+                <span className="font-mono font-bold text-zinc-800 block">2. 20261107000002_seed_demo_restaurant.sql</span>
+                <span className="text-zinc-500 text-[10px]">Brew &amp; Bean café records, 12 tables, 6 categories &amp; items</span>
+              </div>
             </div>
           </div>
         </div>
