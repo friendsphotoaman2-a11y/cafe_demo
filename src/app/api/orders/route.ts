@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEMO_MENU_ITEMS, DEMO_SETTINGS } from "@/lib/demo-data";
 import { OrderCustomizationChoice, VegClassification } from "@/lib/types";
-import { generateDiningSessionToken } from "@/lib/customer-session";
+import {
+  generateDiningSessionToken,
+  COOKIE_CUSTOMER_DEVICE,
+  CUSTOMER_SESSION_MAX_AGE_SECONDS,
+  verifyCustomerDeviceSession,
+  createAndStoreCustomerDeviceSession,
+  RememberedCustomer,
+} from "@/lib/customer-session";
 import { requireStaffRole } from "@/lib/server-auth";
 
 interface IncomingOrderItem {
@@ -133,6 +140,19 @@ export async function GET(req: NextRequest) {
     }
     const formattedCode = tableCode.padStart(2, "0");
 
+    // Check for persistent remembered customer device cookie across ALL tables
+    const rawDeviceToken =
+      req.cookies.get(COOKIE_CUSTOMER_DEVICE)?.value ||
+      req.headers.get("x-customer-device-token");
+
+    let rememberedCustomer: RememberedCustomer | null = null;
+    if (rawDeviceToken) {
+      const devCheck = await verifyCustomerDeviceSession(supabase, rawDeviceToken);
+      if (devCheck.valid && devCheck.customer) {
+        rememberedCustomer = devCheck.customer;
+      }
+    }
+
     const cookieTokenName = `tbw_dining_token_${formattedCode}`;
     const providedSessionToken =
       searchParams.get("token") ||
@@ -150,58 +170,59 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Table not found." }, { status: 404 });
     }
 
-    // If no token provided, return table occupancy status without revealing guest details
-    if (!providedSessionToken) {
-      const { data: activeSession } = await supabase
+    // Check if table currently has an active dining session
+    const { data: tableActiveSession } = await supabase
+      .from("dining_sessions")
+      .select("id, session_code, customer_id, guest_name, guest_phone, status, opened_at")
+      .eq("table_id", dbTable.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    let matchedSession = null;
+
+    if (providedSessionToken) {
+      // Direct lookup by provided dining session token
+      const { data: tokenSession } = await supabase
         .from("dining_sessions")
-        .select("id, status")
+        .select("id, session_code, customer_id, guest_name, guest_phone, status, opened_at, closed_at")
         .eq("table_id", dbTable.id)
-        .eq("status", "active")
+        .eq("session_code", providedSessionToken)
+        .order("opened_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
+
+      matchedSession = tokenSession;
+    } else if (tableActiveSession && rememberedCustomer) {
+      // If no table-scoped token passed, but this device belongs to the active session guest on this table
+      if (
+        tableActiveSession.customer_id === rememberedCustomer.id ||
+        tableActiveSession.guest_phone === rememberedCustomer.phone
+      ) {
+        matchedSession = tableActiveSession;
+      }
+    }
+
+    // If no active dining session on this table (e.g. customer moved to a new table like Table 07)
+    if (!matchedSession) {
+      const isOccupiedByOther = !!tableActiveSession && (!rememberedCustomer || tableActiveSession.customer_id !== rememberedCustomer.id);
 
       return NextResponse.json({
         success: true,
-        hasActiveSession: !!activeSession,
-        isOccupied: !!activeSession,
-        requiresToken: !!activeSession,
+        hasActiveSession: false,
+        isOccupied: isOccupiedByOther,
+        requiresToken: isOccupiedByOther,
+        rememberedCustomer: rememberedCustomer || undefined,
         table: {
           code: dbTable.code,
           name: dbTable.name,
           status: dbTable.status,
         },
+        orders: [],
+        sessionBill: null,
       });
     }
 
-    // Customer provided token: lookup matching dining session
-    const { data: matchedSession } = await supabase
-      .from("dining_sessions")
-      .select("id, session_code, guest_name, guest_phone, status, opened_at, closed_at")
-      .eq("table_id", dbTable.id)
-      .eq("session_code", providedSessionToken)
-      .order("opened_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!matchedSession) {
-      // Check if table is occupied by another session
-      const { data: tableActiveSession } = await supabase
-        .from("dining_sessions")
-        .select("id")
-        .eq("table_id", dbTable.id)
-        .eq("status", "active")
-        .maybeSingle();
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Session credential not found for this table.",
-          isOccupied: !!tableActiveSession,
-        },
-        { status: 403 }
-      );
-    }
-
-    // Fetch all orders for this dining session
+    // Fetch all orders for this matched dining session
     const { data: sessionOrders } = await supabase
       .from("orders")
       .select(`
@@ -336,6 +357,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      hasActiveSession: true,
+      rememberedCustomer: rememberedCustomer || undefined,
       session: {
         id: matchedSession.id,
         sessionCode: matchedSession.session_code,
@@ -475,6 +498,7 @@ export async function POST(req: NextRequest) {
     let newOrderId = `ord-${Date.now()}`;
     let diningSessionId: string | null = null;
     let persistenceDetails = "local_memory_fallback";
+    let newDeviceTokenToSet: string | null = null;
 
     // Track session running totals
     let previousSessionSubtotal = 0;
@@ -501,20 +525,57 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        // Verify or issue persistent customer device token
+        const rawDeviceToken =
+          req.cookies.get(COOKIE_CUSTOMER_DEVICE)?.value ||
+          req.headers.get("x-customer-device-token");
+
+        let customerId: string | null = null;
+        if (rawDeviceToken) {
+          const devCheck = await verifyCustomerDeviceSession(supabase, rawDeviceToken);
+          if (devCheck.valid && devCheck.customer) {
+            customerId = devCheck.customer.id;
+          }
+        }
+
+        // Upsert customer profile
+        const { data: customerRecord } = await supabase
+          .from("customers")
+          .upsert(
+            { phone: cleanPhone, full_name: customerName.trim() },
+            { onConflict: "phone" }
+          )
+          .select("id")
+          .single();
+
+        if (customerRecord) {
+          customerId = customerRecord.id;
+        }
+
+        // Issue 90-day device token if none exists
+        if (!rawDeviceToken && customerId) {
+          newDeviceTokenToSet = await createAndStoreCustomerDeviceSession(
+            supabase,
+            customerId
+          );
+        }
+
         // Check for active dining session on this table
         const { data: existingSession } = await supabase
           .from("dining_sessions")
-          .select("id, session_code, guest_name, guest_phone, status")
+          .select("id, session_code, customer_id, guest_name, guest_phone, status")
           .eq("table_id", dbTable.id)
           .eq("status", "active")
           .maybeSingle();
 
         if (existingSession) {
-          // If active dining session exists, verify caller has matching cryptographic session token
+          // If active dining session exists, verify caller has matching cryptographic session token or matches customer profile
           const tokenMatches =
             providedSessionToken && existingSession.session_code === providedSessionToken;
+          const customerMatches =
+            customerId && existingSession.customer_id === customerId;
 
-          if (!tokenMatches) {
+          if (!tokenMatches && !customerMatches) {
             return NextResponse.json(
               {
                 error: `Table ${formattedCode} is occupied by an active dining session. Please request staff to close previous bill.`,
@@ -552,22 +613,12 @@ export async function POST(req: NextRequest) {
           activeSessionCode = generateDiningSessionToken();
           isNewSession = true;
 
-          // Register or retrieve customer
-          const { data: customerRecord } = await supabase
-            .from("customers")
-            .upsert(
-              { phone: cleanPhone, full_name: customerName.trim() },
-              { onConflict: "phone" }
-            )
-            .select("id")
-            .single();
-
           const { data: newSession, error: sessionErr } = await supabase
             .from("dining_sessions")
             .insert({
               restaurant_id: dbTable.restaurant_id,
               table_id: dbTable.id,
-              customer_id: customerRecord?.id || null,
+              customer_id: customerId,
               session_code: activeSessionCode,
               guest_name: customerName.trim(),
               guest_phone: cleanPhone,
@@ -708,7 +759,7 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json(responsePayload);
 
-    // Set secure cookie for dining session on this table
+    // 1. Set secure cookie for dining session on this table
     response.cookies.set(cookieTokenName, activeSessionCode, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -716,6 +767,17 @@ export async function POST(req: NextRequest) {
       maxAge: 60 * 60 * 4, // 4 hours for active dining session
       path: `/t/${formattedCode}`,
     });
+
+    // 2. Set persistent 90-day customer device session cookie with path="/" across ALL tables
+    if (newDeviceTokenToSet) {
+      response.cookies.set(COOKIE_CUSTOMER_DEVICE, newDeviceTokenToSet, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: CUSTOMER_SESSION_MAX_AGE_SECONDS,
+        path: "/",
+      });
+    }
 
     return response;
   } catch (err: unknown) {

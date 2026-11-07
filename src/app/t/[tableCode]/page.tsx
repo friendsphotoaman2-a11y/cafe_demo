@@ -81,6 +81,8 @@ export default function TableOrderingPage({ params }: PageProps) {
   const [customerName, setCustomerName] = useState<string>(session?.name || "");
   const [customerPhone, setCustomerPhone] = useState<string>(session?.phone || "");
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
+  const [isRememberedCustomer, setIsRememberedCustomer] = useState<boolean>(false);
+  const [customerLoyalty, setCustomerLoyalty] = useState<{ stamps: number; totalVisits: number } | null>(null);
 
   // Review modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
@@ -110,23 +112,41 @@ export default function TableOrderingPage({ params }: PageProps) {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
+          // 1. Remembered customer device identification (works across ALL tables)
+          if (data.rememberedCustomer) {
+            setIsRememberedCustomer(true);
+            setCustomerName((prev) => prev || data.rememberedCustomer.fullName);
+            setCustomerPhone((prev) => prev || data.rememberedCustomer.phone);
+            setCustomerLoyalty({
+              stamps: data.rememberedCustomer.stamps || 0,
+              totalVisits: data.rememberedCustomer.totalVisits || 0,
+            });
+          }
+          // 2. Active dining session on this specific table
           if (data.session) {
-            if (data.session.guestName && !customerName) setCustomerName(data.session.guestName);
-            if (data.session.guestPhone && !customerPhone) setCustomerPhone(data.session.guestPhone);
+            if (data.session.guestName) setCustomerName(data.session.guestName);
+            if (data.session.guestPhone) setCustomerPhone(data.session.guestPhone);
             setIsSessionClosed(data.isClosed || data.session.status === "closed");
+          } else {
+            // New visit on a clean table (e.g. customer moved to Table 07)
+            setIsSessionClosed(false);
           }
           if (data.orders && Array.isArray(data.orders)) {
             setRemoteOrders(data.orders);
+          } else {
+            setRemoteOrders([]);
           }
           if (data.sessionBill) {
             setRemoteSessionBill(data.sessionBill);
+          } else {
+            setRemoteSessionBill(null);
           }
         }
       }
     } catch {
       // Offline fallback
     }
-  }, [formattedCode, customerName, customerPhone]);
+  }, [formattedCode]);
 
   React.useEffect(() => {
     fetchSession();
@@ -240,11 +260,34 @@ export default function TableOrderingPage({ params }: PageProps) {
     }
   };
 
-  const handleCustomerSaved = (name: string, phone: string) => {
+  const handleCustomerSaved = async (name: string, phone: string) => {
     setCustomerName(name);
     setCustomerPhone(phone);
+    try {
+      await fetch("/api/customer/identity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: name, phone }),
+      });
+      setIsRememberedCustomer(true);
+    } catch (e) {
+      console.warn("Device registration:", e);
+    }
     if (cartItems.length > 0) {
       setIsReviewModalOpen(true);
+    }
+  };
+
+  const handleSwitchCustomer = async () => {
+    if (confirm(`Switch guest profile away from ${customerName || "current user"}?`)) {
+      try {
+        await fetch("/api/customer/identity", { method: "DELETE" });
+      } catch {}
+      setCustomerName("");
+      setCustomerPhone("");
+      setIsRememberedCustomer(false);
+      setCustomerLoyalty(null);
+      setIsOnboardingModalOpen(true);
     }
   };
 
@@ -322,13 +365,19 @@ export default function TableOrderingPage({ params }: PageProps) {
           <div className="flex items-center gap-2">
             {/* Customer Pill */}
             {customerName ? (
-              <button
-                onClick={() => setIsOnboardingModalOpen(true)}
-                className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 border border-zinc-200 shadow-xs"
-              >
-                <User className="h-3.5 w-3.5 text-cafe-700" />
-                <span className="max-w-[90px] truncate">{customerName}</span>
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleSwitchCustomer}
+                  title="Click to switch guest"
+                  className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 border border-zinc-200 shadow-xs hover:border-amber-400 transition"
+                >
+                  <User className="h-3.5 w-3.5 text-cafe-700" />
+                  <span className="max-w-[90px] truncate">{customerName}</span>
+                  {isRememberedCustomer && (
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" title="Remembered Device" />
+                  )}
+                </button>
+              </div>
             ) : (
               <button
                 onClick={() => setIsOnboardingModalOpen(true)}
@@ -356,6 +405,29 @@ export default function TableOrderingPage({ params }: PageProps) {
           </div>
         </div>
       </header>
+
+      {/* Welcome Back Banner for Remembered Customer Across Any Table QR */}
+      {isRememberedCustomer && customerName && !effectiveBill?.isPaid && (
+        <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-500 text-white px-4 py-2 text-xs shadow-xs flex items-center justify-between border-b border-amber-600">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-200 fill-amber-200" />
+            <span>
+              Welcome back, <strong className="font-bold underline">{customerName}</strong>! Table {formattedCode} is ready for you.
+            </span>
+            {customerLoyalty && customerLoyalty.stamps > 0 && (
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-amber-100 border border-white/30 hidden sm:inline-block">
+                ★ {customerLoyalty.stamps}/5 Stamps
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleSwitchCustomer}
+            className="text-[10px] font-semibold text-amber-100 hover:text-white underline hover:no-underline ml-2"
+          >
+            Not you? Switch
+          </button>
+        </div>
+      )}
 
       {/* Session Paid / Closed Notice */}
       {(effectiveBill?.isPaid || isSessionClosed) && (
