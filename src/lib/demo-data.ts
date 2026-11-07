@@ -506,6 +506,32 @@ export const DEMO_MENU_ITEMS: MenuItem[] = [
     isAvailable: true,
     isFeatured: false,
   },
+  {
+    id: "b-01",
+    name: "Classic French Butter Croissant",
+    categoryId: "desserts-bakes",
+    price: 150,
+    image: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80",
+    description: "Flaky, multi-layered French golden butter croissant baked fresh daily, served with artisanal whipped herb butter.",
+    ingredients: ["Normandy French Butter", "Organic Flour", "Yeast", "Sea Salt"],
+    classification: "veg",
+    flavour: "Flaky, Buttery & Golden",
+    servingTemperature: "Hot",
+    spiceLevel: "None",
+    allergens: ["Dairy", "Gluten"],
+    isAvailable: true,
+    isFeatured: true,
+    customizationGroups: [
+      {
+        id: "cust-croissant-warmth",
+        title: "Serving Style",
+        options: [
+          { id: "opt-warm-toasted", name: "Warm & Lightly Toasted", priceDelta: 0 },
+          { id: "opt-room-temp", name: "Fresh Room Temperature", priceDelta: 0 },
+        ],
+      },
+    ],
+  },
 ];
 
 export const DEMO_TABLES: CafeTable[] = [

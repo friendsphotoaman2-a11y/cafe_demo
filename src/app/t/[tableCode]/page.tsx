@@ -91,6 +91,52 @@ export default function TableOrderingPage({ params }: PageProps) {
   // Active orders placed by this table
   const tableOrders = orders.filter((o) => o.tableCode === formattedCode);
 
+  // Remote session state (Authoritative from Supabase)
+  const [remoteSessionBill, setRemoteSessionBill] = useState<typeof sessionBill | null>(null);
+  const [remoteOrders, setRemoteOrders] = useState<typeof orders | null>(null);
+  const [isSessionClosed, setIsSessionClosed] = useState(false);
+
+  const fetchSession = React.useCallback(async () => {
+    try {
+      const storedToken =
+        typeof window !== "undefined"
+          ? localStorage.getItem(`tbw_dining_token_${formattedCode}`)
+          : null;
+
+      const url = `/api/orders?tableCode=${formattedCode}${
+        storedToken ? `&token=${encodeURIComponent(storedToken)}` : ""
+      }`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (data.session) {
+            if (data.session.guestName && !customerName) setCustomerName(data.session.guestName);
+            if (data.session.guestPhone && !customerPhone) setCustomerPhone(data.session.guestPhone);
+            setIsSessionClosed(data.isClosed || data.session.status === "closed");
+          }
+          if (data.orders && Array.isArray(data.orders)) {
+            setRemoteOrders(data.orders);
+          }
+          if (data.sessionBill) {
+            setRemoteSessionBill(data.sessionBill);
+          }
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+  }, [formattedCode, customerName, customerPhone]);
+
+  React.useEffect(() => {
+    fetchSession();
+    const interval = setInterval(fetchSession, 4000);
+    return () => clearInterval(interval);
+  }, [fetchSession]);
+
+  const effectiveOrders = remoteOrders && remoteOrders.length > 0 ? remoteOrders : tableOrders;
+  const effectiveBill = remoteSessionBill || sessionBill;
+
   // Filtered menu
   const filteredItems = useMemo(() => {
     return DEMO_MENU_ITEMS.filter((item) => {
@@ -118,6 +164,10 @@ export default function TableOrderingPage({ params }: PageProps) {
     quantity: number,
     selectedCustomizations: OrderCustomizationChoice[]
   ) => {
+    if (effectiveBill?.isPaid || isSessionClosed) {
+      alert("This table session is already paid and closed. Please scan the table QR code to start a new dining session.");
+      return;
+    }
     const customSuffix = selectedCustomizations
       .map((c) => c.optionName)
       .sort()
@@ -198,29 +248,27 @@ export default function TableOrderingPage({ params }: PageProps) {
     }
   };
 
-  const handleOrderConfirmed = async (generatedOrderNo: string) => {
-    try {
-      await placeOrder({
-        tableCode: formattedCode,
-        customerName: customerName || "Guest",
-        customerPhone: customerPhone || "9999999999",
-        items: cartItems.map((ci) => ({
-          menuItemId: ci.menuItem.id,
-          name: ci.menuItem.name,
-          quantity: ci.quantity,
-          unitPrice: ci.unitPrice,
-          totalPrice: ci.totalPrice,
-          customizations: ci.selectedCustomizations,
-          classification: ci.menuItem.classification,
-        })),
-        notes: kitchenNotes || undefined,
-      });
+  const handleConfirmOrder = async (notes?: string) => {
+    const idempotencyKey = `ord_req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const result = await placeOrder({
+      tableCode: formattedCode,
+      customerName: customerName || "Guest",
+      customerPhone: customerPhone || "9999999999",
+      items: cartItems.map((ci) => ({
+        menuItemId: ci.menuItem.id,
+        name: ci.menuItem.name,
+        quantity: ci.quantity,
+        unitPrice: ci.unitPrice,
+        totalPrice: ci.totalPrice,
+        customizations: ci.selectedCustomizations,
+        classification: ci.menuItem.classification,
+      })),
+      notes: notes || kitchenNotes || undefined,
+      idempotencyKey,
+    });
 
-      setCartItems([]);
-      setKitchenNotes("");
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to place order.");
-    }
+    fetchSession();
+    return result;
   };
 
   const totalCartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -309,6 +357,16 @@ export default function TableOrderingPage({ params }: PageProps) {
         </div>
       </header>
 
+      {/* Session Paid / Closed Notice */}
+      {(effectiveBill?.isPaid || isSessionClosed) && (
+        <div className="bg-emerald-700 text-white px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+          <span>
+            Table {formattedCode} dining session has been settled &amp; closed. Thank you for visiting!
+          </span>
+        </div>
+      )}
+
       {/* Hero Table Banner */}
       <section className="bg-gradient-to-r from-cafe-950 via-cafe-900 to-cafe-950 text-white py-5 px-4 sm:px-6">
         <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -346,9 +404,9 @@ export default function TableOrderingPage({ params }: PageProps) {
               }`}
             >
               <span>My Orders</span>
-              {tableOrders.length > 0 && (
+              {effectiveOrders.length > 0 && (
                 <span className="rounded-full bg-white/20 px-1.5 text-[10px]">
-                  {tableOrders.length}
+                  {effectiveOrders.length}
                 </span>
               )}
             </button>
@@ -464,7 +522,7 @@ export default function TableOrderingPage({ params }: PageProps) {
             </button>
           </div>
 
-          {tableOrders.length === 0 ? (
+          {effectiveOrders.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-zinc-300 bg-white/70 p-12 text-center">
               <ShoppingBag className="h-10 w-10 text-zinc-300 mx-auto mb-2" />
               <h3 className="font-serif text-lg font-bold text-zinc-800">
@@ -482,7 +540,7 @@ export default function TableOrderingPage({ params }: PageProps) {
             </div>
           ) : (
             <div className="space-y-4">
-              {tableOrders.map((ord) => {
+              {effectiveOrders.map((ord) => {
                 const stepInfo = getOrderStatusStep(ord.status);
 
                 return (
@@ -582,7 +640,7 @@ export default function TableOrderingPage({ params }: PageProps) {
       {/* VIEW TAB 3: CONSOLIDATED SESSION BILL */}
       {activeViewTab === "bill" && (
         <main className="mx-auto max-w-lg px-4 sm:px-6 pt-6">
-          {sessionBill && sessionBill.consolidatedItems.length > 0 ? (
+          {effectiveBill && effectiveBill.consolidatedItems.length > 0 ? (
             <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-lg space-y-6">
               <div className="text-center border-b border-zinc-100 pb-4">
                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
@@ -592,12 +650,12 @@ export default function TableOrderingPage({ params }: PageProps) {
                   Table {formattedCode} Total Bill
                 </h3>
                 <p className="text-xs text-zinc-500">
-                  Orders: {sessionBill.orderNumbers.join(", ")}
+                  Orders: {effectiveBill.orderNumbers.join(", ")}
                 </p>
                 <div className="mt-2 inline-block">
-                  {sessionBill.isPaid ? (
+                  {effectiveBill.isPaid ? (
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-900 border border-emerald-300">
-                      PAID AT COUNTER ({sessionBill.paymentMethod || "Settled"})
+                      PAID AT COUNTER ({effectiveBill.paymentMethod || "Settled"})
                     </span>
                   ) : (
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900 border border-amber-300">
@@ -611,20 +669,20 @@ export default function TableOrderingPage({ params }: PageProps) {
               <div className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 space-y-1">
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Customer:</span>
-                  <span className="font-bold">{sessionBill.customerName}</span>
+                  <span className="font-bold">{effectiveBill.customerName}</span>
                 </div>
-                {sessionBill.customerPhone && (
+                {effectiveBill.customerPhone && (
                   <div className="flex justify-between">
                     <span className="text-zinc-500">Phone:</span>
-                    <span>{sessionBill.customerPhone}</span>
+                    <span>{effectiveBill.customerPhone}</span>
                   </div>
                 )}
-                {sessionBill.paymentAudit && (
+                {effectiveBill.paymentAudit && (
                   <div className="flex justify-between text-emerald-800 font-medium">
                     <span>Receipt Confirmed by:</span>
                     <span>
-                      {sessionBill.paymentAudit.cashierName} @{" "}
-                      {sessionBill.paymentAudit.paidAt}
+                      {effectiveBill.paymentAudit.cashierName} @{" "}
+                      {effectiveBill.paymentAudit.paidAt}
                     </span>
                   </div>
                 )}
@@ -636,7 +694,7 @@ export default function TableOrderingPage({ params }: PageProps) {
                   Consolidated Items
                 </h4>
                 <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200">
-                  {sessionBill.consolidatedItems.map((item) => (
+                  {effectiveBill.consolidatedItems.map((item) => (
                     <div
                       key={item.key}
                       className="flex items-center justify-between p-3 text-xs"
@@ -663,22 +721,22 @@ export default function TableOrderingPage({ params }: PageProps) {
               <div className="rounded-2xl bg-zinc-50 p-4 space-y-2 text-xs text-zinc-600 border border-zinc-200">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span>{formatINR(sessionBill.subtotal)}</span>
+                  <span>{formatINR(effectiveBill.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Configured GST ({sessionBill.taxPercent}%)</span>
-                  <span>{formatINR(sessionBill.taxAmount)}</span>
+                  <span>Configured GST ({effectiveBill.taxPercent}%)</span>
+                  <span>{formatINR(effectiveBill.taxAmount)}</span>
                 </div>
                 <div className="flex justify-between text-base font-black text-zinc-900 pt-2 border-t border-zinc-200">
                   <span>Total Payable</span>
                   <span className="text-cafe-900">
-                    {formatINR(sessionBill.totalAmount)}
+                    {formatINR(effectiveBill.totalAmount)}
                   </span>
                 </div>
               </div>
 
               {/* Instructions */}
-              {!sessionBill.isPaid ? (
+              {!effectiveBill.isPaid ? (
                 <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900 space-y-1">
                   <div className="font-bold flex items-center gap-1.5">
                     <AlertCircle className="h-4 w-4 text-amber-600" />
@@ -743,11 +801,14 @@ export default function TableOrderingPage({ params }: PageProps) {
         onOpen={() => setIsCartDrawerOpen(true)}
         tableCode={formattedCode}
         cartItems={cartItems}
+        previousOrders={effectiveOrders}
+        currentSessionBill={effectiveBill}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
         onProceedToReview={handleProceedToReview}
         kitchenNotes={kitchenNotes}
         onKitchenNotesChange={setKitchenNotes}
+        onViewOrders={() => setActiveViewTab("orders")}
       />
 
       <TableOrderReviewModal
@@ -757,14 +818,26 @@ export default function TableOrderingPage({ params }: PageProps) {
         customerName={customerName || "Table Guest"}
         customerPhone={customerPhone || "+91 98000 00000"}
         cartItems={cartItems}
+        previousOrders={effectiveOrders}
+        currentSessionBill={effectiveBill}
         kitchenNotes={kitchenNotes}
-        onOrderSuccess={(orderNo) => {
-          handleOrderConfirmed(orderNo);
-          setActiveViewTab("orders");
+        onConfirmOrder={handleConfirmOrder}
+        onOrderSuccess={() => {
+          setCartItems([]);
+          setKitchenNotes("");
+          fetchSession();
         }}
         onEditCustomer={() => {
           setIsReviewModalOpen(false);
           setIsOnboardingModalOpen(true);
+        }}
+        onViewOrders={() => {
+          setIsReviewModalOpen(false);
+          setActiveViewTab("orders");
+        }}
+        onViewBill={() => {
+          setIsReviewModalOpen(false);
+          setActiveViewTab("bill");
         }}
       />
     </div>

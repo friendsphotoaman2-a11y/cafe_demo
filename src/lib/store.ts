@@ -85,6 +85,19 @@ export function useCafeStore() {
     setCustomers(loadedCustomers);
     setSession(loadedSession);
     setIsLoaded(true);
+
+    // If staff session active, cross-sync latest orders directly from server/Supabase
+    if (typeof window !== "undefined") {
+      fetch("/api/orders")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data && data.success && Array.isArray(data.orders)) {
+            setOrders(data.orders);
+            setStoredJson(STORAGE_KEY_ORDERS, data.orders);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // 1. Local Same-Origin Sync
@@ -237,63 +250,66 @@ export function useCafeStore() {
       classification: VegClassification;
     }[];
     notes?: string;
-  }): Promise<CafeOrder> => {
+    idempotencyKey?: string;
+  }): Promise<CafeOrder & { order: CafeOrder; sessionBill: TableSessionBill | null; diningSessionToken?: string }> => {
     const formattedCode = params.tableCode.padStart(2, "0");
     const storedDiningToken = typeof window !== "undefined"
       ? localStorage.getItem(`tbw_dining_token_${formattedCode}`)
       : null;
 
     let serverOrder: CafeOrder | null = null;
+    let serverSessionBill: TableSessionBill | null = null;
+    let activeToken: string | undefined = storedDiningToken || undefined;
 
     // 1. Call server API route for authoritative processing
-    try {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(storedDiningToken ? { "x-dining-session-token": storedDiningToken } : {}),
-        },
-        body: JSON.stringify({
-          ...params,
-          tableCode: formattedCode,
-          diningSessionToken: storedDiningToken,
-        }),
-      });
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(storedDiningToken ? { "x-dining-session-token": storedDiningToken } : {}),
+      },
+      body: JSON.stringify({
+        ...params,
+        tableCode: formattedCode,
+        diningSessionToken: storedDiningToken,
+        idempotencyKey: params.idempotencyKey,
+      }),
+    });
 
-      const data = await res.json();
-      if (res.ok && data.success && data.order) {
-        serverOrder = {
-          id: data.order.id,
-          orderNumber: data.order.orderNumber,
-          tableCode: data.order.tableCode,
-          customerName: data.order.customerName,
-          customerPhone: data.order.customerPhone,
-          items: data.order.items,
-          subtotal: data.order.subtotal,
-          taxAmount: data.order.taxAmount,
-          totalAmount: data.order.totalAmount,
-          status: data.order.status || "new",
-          paymentStatus: data.order.paymentStatus || "unpaid",
-          notes: data.order.notes,
-          createdAt: data.order.createdAt || "Just now",
-          timestamp: Date.now(),
-          estimatedPrepMinutes: 12,
-        };
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `Failed to place order for Table ${formattedCode}.`);
+    }
 
-        if (data.diningSessionToken && typeof window !== "undefined") {
+    if (data.success && data.order) {
+      serverOrder = {
+        id: data.order.id,
+        orderNumber: data.order.orderNumber,
+        tableCode: data.order.tableCode,
+        customerName: data.order.customerName,
+        customerPhone: data.order.customerPhone,
+        items: data.order.items,
+        subtotal: data.order.subtotal,
+        taxAmount: data.order.taxAmount,
+        totalAmount: data.order.totalAmount,
+        status: data.order.status || "new",
+        paymentStatus: data.order.paymentStatus || "unpaid",
+        notes: data.order.notes,
+        createdAt: data.order.createdAt || "Just now",
+        timestamp: Date.now(),
+        estimatedPrepMinutes: 12,
+      };
+
+      if (data.sessionBill) {
+        serverSessionBill = data.sessionBill;
+      }
+
+      if (data.diningSessionToken) {
+        activeToken = data.diningSessionToken;
+        if (typeof window !== "undefined") {
           localStorage.setItem(`tbw_dining_token_${formattedCode}`, data.diningSessionToken);
         }
-      } else if (!res.ok) {
-        console.warn("Server order rejection:", data.error);
-        if (res.status === 409) {
-          throw new Error(data.error || `Table ${formattedCode} is occupied by an active session.`);
-        }
       }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes("occupied")) {
-        throw err;
-      }
-      console.log("Server API order attempt:", err);
     }
 
     // 2. Synchronize store state
@@ -312,7 +328,7 @@ export function useCafeStore() {
 
     const subtotal = params.items.reduce((acc, i) => acc + i.totalPrice, 0);
     const taxRate = DEMO_SETTINGS.gstRatePercent / 100;
-    const taxAmount = subtotal * taxRate;
+    const taxAmount = Math.round(subtotal * taxRate * 100) / 100;
     const totalAmount = subtotal + taxAmount;
     const generatedOrderNumber = `#TBW-${Math.floor(1040 + currentOrders.length + 1)}`;
     const newOrderId = `ord-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
@@ -335,7 +351,7 @@ export function useCafeStore() {
       estimatedPrepMinutes: 12,
     };
 
-    setStoredJson(STORAGE_KEY_ORDERS, [newOrder, ...currentOrders]);
+    setStoredJson(STORAGE_KEY_ORDERS, [newOrder, ...currentOrders.filter((o) => o.id !== newOrder.id)]);
 
     const updatedTables = currentTables.map((t) => {
       if (t.code === formattedCode) {
@@ -383,7 +399,12 @@ export function useCafeStore() {
     });
 
     loadAll();
-    return newOrder;
+
+    return Object.assign(newOrder, {
+      order: newOrder,
+      sessionBill: serverSessionBill,
+      diningSessionToken: activeToken,
+    });
   };
 
   // --- KITCHEN STATUS PROGRESSION ---
@@ -458,7 +479,7 @@ export function useCafeStore() {
       }
 
       const unpaidOrders = tableOrders.filter((o) => o.paymentStatus === "unpaid");
-      const targetOrders = unpaidOrders.length > 0 ? unpaidOrders : [tableOrders[0]];
+      const targetOrders = unpaidOrders.length > 0 ? unpaidOrders : tableOrders;
 
       const itemMap = new Map<
         string,

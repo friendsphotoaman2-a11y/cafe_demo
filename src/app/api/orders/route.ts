@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { DEMO_MENU_ITEMS, DEMO_SETTINGS } from "@/lib/demo-data";
 import { OrderCustomizationChoice, VegClassification } from "@/lib/types";
 import { generateDiningSessionToken } from "@/lib/customer-session";
+import { requireStaffRole } from "@/lib/server-auth";
 
 interface IncomingOrderItem {
   menuItemId: string;
@@ -10,10 +11,372 @@ interface IncomingOrderItem {
   customizations?: OrderCustomizationChoice[];
 }
 
+// In-memory idempotency cache to prevent double-charges and duplicate orders on repeated clicks
+interface IdempotentRecord {
+  responsePayload: Record<string, unknown>;
+  timestamp: number;
+}
+const idempotencyStore = new Map<string, IdempotentRecord>();
+
+// Clean idempotency cache older than 5 minutes
+function pruneIdempotencyCache() {
+  const now = Date.now();
+  for (const [key, record] of idempotencyStore.entries()) {
+    if (now - record.timestamp > 5 * 60 * 1000) {
+      idempotencyStore.delete(key);
+    }
+  }
+}
+
+// =========================================================================
+// GET: Fetch Table Session & Orders (for Customer) OR All Orders (for Staff)
+// =========================================================================
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const tableCode = searchParams.get("tableCode");
+    const supabase = createAdminClient();
+
+    // 1. Check if caller is authenticated staff (Cashier / Kitchen / Owner / Manager)
+    const staffCheck = await requireStaffRole(req, [
+      "owner",
+      "manager",
+      "cashier",
+      "kitchen",
+    ]);
+
+    if (staffCheck.authorized) {
+      // Staff view: return all recent orders across tables
+      const { data: dbOrders, error: staffOrdersErr } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          order_number,
+          table_id,
+          dining_session_id,
+          status,
+          payment_status,
+          notes,
+          subtotal,
+          tax_amount,
+          total_amount,
+          created_at,
+          restaurant_tables ( code, name ),
+          dining_sessions ( guest_name, guest_phone, status ),
+          order_items (
+            id,
+            item_name_snapshot,
+            unit_price_snapshot,
+            quantity,
+            total_price,
+            customizations_snapshot,
+            classification
+          )
+        `)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (staffOrdersErr) {
+        return NextResponse.json({ error: staffOrdersErr.message }, { status: 500 });
+      }
+
+      const formattedOrders = (dbOrders || []).map((ord) => {
+        const tableRecord = Array.isArray(ord.restaurant_tables)
+          ? ord.restaurant_tables[0]
+          : ord.restaurant_tables;
+        const sessionRecord = Array.isArray(ord.dining_sessions)
+          ? ord.dining_sessions[0]
+          : ord.dining_sessions;
+
+        return {
+          id: ord.id,
+          orderNumber: ord.order_number,
+          tableCode: tableRecord?.code || "01",
+          customerName: sessionRecord?.guest_name || "Guest",
+          customerPhone: sessionRecord?.guest_phone || "",
+          diningSessionId: ord.dining_session_id,
+          subtotal: Number(ord.subtotal) || 0,
+          taxAmount: Number(ord.tax_amount) || 0,
+          totalAmount: Number(ord.total_amount) || 0,
+          status: ord.status,
+          paymentStatus: ord.payment_status,
+          notes: ord.notes || undefined,
+          createdAt: new Date(ord.created_at).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          timestamp: new Date(ord.created_at).getTime(),
+          items: (ord.order_items || []).map((it) => ({
+            name: it.item_name_snapshot,
+            quantity: it.quantity,
+            unitPrice: Number(it.unit_price_snapshot) || 0,
+            totalPrice: Number(it.total_price) || 0,
+            customizations: it.customizations_snapshot || [],
+            classification: it.classification || "veg",
+          })),
+        };
+      });
+
+      return NextResponse.json({
+        success: true,
+        isStaff: true,
+        orders: formattedOrders,
+      });
+    }
+
+    // 2. Customer view: requires tableCode
+    if (!tableCode) {
+      return NextResponse.json(
+        { error: "tableCode query parameter is required." },
+        { status: 400 }
+      );
+    }
+    const formattedCode = tableCode.padStart(2, "0");
+
+    const cookieTokenName = `tbw_dining_token_${formattedCode}`;
+    const providedSessionToken =
+      searchParams.get("token") ||
+      req.cookies.get(cookieTokenName)?.value ||
+      req.headers.get("x-dining-session-token");
+
+    // Look up table in DB
+    const { data: dbTable, error: tableErr } = await supabase
+      .from("restaurant_tables")
+      .select("id, code, name, is_active, status")
+      .eq("code", formattedCode)
+      .maybeSingle();
+
+    if (tableErr || !dbTable) {
+      return NextResponse.json({ error: "Table not found." }, { status: 404 });
+    }
+
+    // If no token provided, return table occupancy status without revealing guest details
+    if (!providedSessionToken) {
+      const { data: activeSession } = await supabase
+        .from("dining_sessions")
+        .select("id, status")
+        .eq("table_id", dbTable.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      return NextResponse.json({
+        success: true,
+        hasActiveSession: !!activeSession,
+        isOccupied: !!activeSession,
+        requiresToken: !!activeSession,
+        table: {
+          code: dbTable.code,
+          name: dbTable.name,
+          status: dbTable.status,
+        },
+      });
+    }
+
+    // Customer provided token: lookup matching dining session
+    const { data: matchedSession } = await supabase
+      .from("dining_sessions")
+      .select("id, session_code, guest_name, guest_phone, status, opened_at, closed_at")
+      .eq("table_id", dbTable.id)
+      .eq("session_code", providedSessionToken)
+      .order("opened_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!matchedSession) {
+      // Check if table is occupied by another session
+      const { data: tableActiveSession } = await supabase
+        .from("dining_sessions")
+        .select("id")
+        .eq("table_id", dbTable.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Session credential not found for this table.",
+          isOccupied: !!tableActiveSession,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Fetch all orders for this dining session
+    const { data: sessionOrders } = await supabase
+      .from("orders")
+      .select(`
+        id,
+        order_number,
+        status,
+        payment_status,
+        notes,
+        subtotal,
+        tax_amount,
+        total_amount,
+        created_at,
+        order_items (
+          id,
+          item_name_snapshot,
+          unit_price_snapshot,
+          quantity,
+          total_price,
+          customizations_snapshot,
+          classification
+        )
+      `)
+      .eq("dining_session_id", matchedSession.id)
+      .order("created_at", { ascending: true });
+
+    // Check for bills & payments if settled
+    let billAudit: Record<string, unknown> | null = null;
+    let paymentMethod: string | null = null;
+    const { data: dbBill } = await supabase
+      .from("bills")
+      .select("id, bill_number, total_payable, status, paid_at, payments ( payment_method, cashier_name, status )")
+      .eq("dining_session_id", matchedSession.id)
+      .maybeSingle();
+
+    if (dbBill && dbBill.status === "paid") {
+      const paymentRec = Array.isArray(dbBill.payments) ? dbBill.payments[0] : dbBill.payments;
+      paymentMethod = paymentRec?.payment_method || "Counter Settle";
+      billAudit = {
+        cashierName: paymentRec?.cashier_name || "Head Cashier",
+        paidAt: dbBill.paid_at ? new Date(dbBill.paid_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "Recently",
+      };
+    }
+
+    // Authoritative session bill calculation
+    let sessionSubtotal = 0;
+    const itemMap = new Map<string, {
+      key: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      totalPrice: number;
+      customizations: OrderCustomizationChoice[];
+    }>();
+
+    const formattedCustomerOrders = (sessionOrders || []).map((ord) => {
+      const sub = Number(ord.subtotal) || 0;
+      sessionSubtotal += sub;
+
+      const items = (ord.order_items || []).map((it) => {
+        const customizations = (it.customizations_snapshot || []) as OrderCustomizationChoice[];
+        const custKey = customizations.map((c) => c.optionName).sort().join("|");
+        const mapKey = `${it.item_name_snapshot}__${custKey}`;
+
+        if (itemMap.has(mapKey)) {
+          const ex = itemMap.get(mapKey)!;
+          ex.quantity += it.quantity;
+          ex.totalPrice += Number(it.total_price) || 0;
+        } else {
+          itemMap.set(mapKey, {
+            key: mapKey,
+            name: it.item_name_snapshot,
+            quantity: it.quantity,
+            unitPrice: Number(it.unit_price_snapshot) || 0,
+            totalPrice: Number(it.total_price) || 0,
+            customizations,
+          });
+        }
+
+        return {
+          name: it.item_name_snapshot,
+          quantity: it.quantity,
+          unitPrice: Number(it.unit_price_snapshot) || 0,
+          totalPrice: Number(it.total_price) || 0,
+          customizations,
+          classification: it.classification || "veg",
+        };
+      });
+
+      return {
+        id: ord.id,
+        orderNumber: ord.order_number,
+        tableCode: formattedCode,
+        customerName: matchedSession.guest_name,
+        customerPhone: matchedSession.guest_phone,
+        subtotal: sub,
+        taxAmount: Number(ord.tax_amount) || 0,
+        totalAmount: Number(ord.total_amount) || 0,
+        status: ord.status,
+        paymentStatus: ord.payment_status,
+        notes: ord.notes || undefined,
+        createdAt: new Date(ord.created_at).toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        timestamp: new Date(ord.created_at).getTime(),
+        items,
+      };
+    });
+
+    const taxPercent = DEMO_SETTINGS.gstRatePercent;
+    const taxAmount = Math.round(sessionSubtotal * taxPercent) / 100;
+    const totalAmount = sessionSubtotal + taxAmount;
+    const isPaid = matchedSession.status === "closed" || (dbBill && dbBill.status === "paid");
+
+    const sessionBill = {
+      tableCode: formattedCode,
+      tableName: dbTable.name,
+      customerName: matchedSession.guest_name,
+      customerPhone: matchedSession.guest_phone,
+      orderNumbers: formattedCustomerOrders.map((o) => o.orderNumber),
+      orderIds: formattedCustomerOrders.map((o) => o.id),
+      consolidatedItems: Array.from(itemMap.values()),
+      subtotal: sessionSubtotal,
+      taxPercent,
+      taxAmount,
+      totalAmount,
+      isAllServed: formattedCustomerOrders.every((o) => o.status === "served" || o.status === "completed"),
+      isPaid: !!isPaid,
+      paymentMethod: paymentMethod || undefined,
+      paymentAudit: billAudit || undefined,
+    };
+
+    return NextResponse.json({
+      success: true,
+      session: {
+        id: matchedSession.id,
+        sessionCode: matchedSession.session_code,
+        guestName: matchedSession.guest_name,
+        guestPhone: matchedSession.guest_phone,
+        status: matchedSession.status,
+      },
+      orders: formattedCustomerOrders,
+      sessionBill,
+      isPaid: !!isPaid,
+      isClosed: matchedSession.status === "closed",
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal Server Error";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+// =========================================================================
+// POST: Submit a New Order (Round 1 or Additional Rounds in Active Session)
+// =========================================================================
 export async function POST(req: NextRequest) {
   try {
+    pruneIdempotencyCache();
+
     const body = await req.json();
-    const { tableCode, customerName, customerPhone, items, notes, diningSessionToken } = body;
+    const {
+      tableCode,
+      customerName,
+      customerPhone,
+      items,
+      notes,
+      diningSessionToken,
+      idempotencyKey,
+    } = body;
+
+    // Check idempotency cache to prevent double-charges and duplicate orders on repeated clicks
+    if (idempotencyKey && idempotencyStore.has(idempotencyKey)) {
+      const cached = idempotencyStore.get(idempotencyKey)!;
+      return NextResponse.json(cached.responsePayload);
+    }
 
     // 1. Mandatory Input Validation
     if (!tableCode) {
@@ -22,16 +385,25 @@ export async function POST(req: NextRequest) {
     const formattedCode = tableCode.toString().padStart(2, "0");
 
     if (!customerName || customerName.trim().length < 2) {
-      return NextResponse.json({ error: "Valid customer name (minimum 2 characters) is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Valid customer name (minimum 2 characters) is required." },
+        { status: 400 }
+      );
     }
 
     const cleanPhone = (customerPhone || "").toString().replace(/\D/g, "");
     if (cleanPhone.length !== 10) {
-      return NextResponse.json({ error: "A valid 10-digit Indian mobile number is required." }, { status: 400 });
+      return NextResponse.json(
+        { error: "A valid 10-digit Indian mobile number is required." },
+        { status: 400 }
+      );
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "Order must contain at least one menu item." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Order must contain at least one menu item." },
+        { status: 400 }
+      );
     }
 
     // 2. Authoritative Server-side Price Calculation (Client prices discarded)
@@ -84,9 +456,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const taxPercent = DEMO_SETTINGS.gstRatePercent;
-    const taxAmount = (calculatedSubtotal * taxPercent) / 100;
-    const totalAmount = calculatedSubtotal + taxAmount;
+    // Decimal-safe calculations (rounded to 2 decimal places)
+    const taxPercent = DEMO_SETTINGS.gstRatePercent; // 5%
+    const taxAmount = Math.round(calculatedSubtotal * taxPercent) / 100;
+    const totalAmount = Math.round((calculatedSubtotal + taxAmount) * 100) / 100;
     const orderNumber = `#TBW-${Math.floor(1040 + Math.random() * 8950)}`;
 
     // 3. Customer Session Isolation & Dining Session Management
@@ -103,13 +476,20 @@ export async function POST(req: NextRequest) {
     let diningSessionId: string | null = null;
     let persistenceDetails = "local_memory_fallback";
 
+    // Track session running totals
+    let previousSessionSubtotal = 0;
+    let combinedSessionSubtotal = calculatedSubtotal;
+    let combinedSessionTax = taxAmount;
+    let combinedSessionTotal = totalAmount;
+    const sessionOrderNumbers: string[] = [orderNumber];
+
     try {
       const supabase = createAdminClient();
 
       // Check if table is valid and active in DB
       const { data: dbTable, error: tableErr } = await supabase
         .from("restaurant_tables")
-        .select("id, is_active, restaurant_id")
+        .select("id, is_active, restaurant_id, name")
         .eq("code", formattedCode)
         .maybeSingle();
 
@@ -124,20 +504,20 @@ export async function POST(req: NextRequest) {
         // Check for active dining session on this table
         const { data: existingSession } = await supabase
           .from("dining_sessions")
-          .select("id, session_code, guest_name, guest_phone")
+          .select("id, session_code, guest_name, guest_phone, status")
           .eq("table_id", dbTable.id)
           .eq("status", "active")
           .maybeSingle();
 
         if (existingSession) {
-          // If active dining session exists, verify caller has matching session credential or matching identity
-          const tokenMatches = providedSessionToken && existingSession.session_code === providedSessionToken;
-          const identityMatches = existingSession.guest_phone === cleanPhone;
+          // If active dining session exists, verify caller has matching cryptographic session token
+          const tokenMatches =
+            providedSessionToken && existingSession.session_code === providedSessionToken;
 
-          if (!tokenMatches && !identityMatches) {
+          if (!tokenMatches) {
             return NextResponse.json(
               {
-                error: `Table ${formattedCode} is occupied by an active dining session. Please request the current guest or staff to close previous bill.`,
+                error: `Table ${formattedCode} is occupied by an active dining session. Please request staff to close previous bill.`,
                 code: "TABLE_OCCUPIED",
               },
               { status: 409 }
@@ -147,7 +527,28 @@ export async function POST(req: NextRequest) {
           diningSessionId = existingSession.id;
           activeSessionCode = existingSession.session_code;
         } else {
-          // No active session: initialize new isolated dining session with cryptographically secure token
+          // No active session: check if client is attempting to place order with an already closed session token
+          if (providedSessionToken) {
+            const { data: closedSession } = await supabase
+              .from("dining_sessions")
+              .select("id, status")
+              .eq("table_id", dbTable.id)
+              .eq("session_code", providedSessionToken)
+              .eq("status", "closed")
+              .maybeSingle();
+
+            if (closedSession) {
+              return NextResponse.json(
+                {
+                  error: "This dining session has already been settled and closed. Please scan table QR to start a fresh dining session.",
+                  code: "SESSION_CLOSED",
+                },
+                { status: 403 }
+              );
+            }
+          }
+
+          // No active session and not closed: initialize a new isolated dining session with cryptographically secure token
           activeSessionCode = generateDiningSessionToken();
           isNewSession = true;
 
@@ -222,6 +623,30 @@ export async function POST(req: NextRequest) {
             .from("restaurant_tables")
             .update({ status: "order_pending" })
             .eq("id", dbTable.id);
+
+          // Query all orders in this session to compute the authoritative cumulative running bill
+          if (diningSessionId) {
+            const { data: allSessionOrders } = await supabase
+              .from("orders")
+              .select("id, order_number, subtotal, tax_amount, total_amount, payment_status")
+              .eq("dining_session_id", diningSessionId);
+
+            if (allSessionOrders && allSessionOrders.length > 0) {
+              const previousOrders = allSessionOrders.filter((o) => o.id !== dbOrder.id);
+              previousSessionSubtotal = previousOrders.reduce(
+                (sum, o) => sum + (Number(o.subtotal) || 0),
+                0
+              );
+              combinedSessionSubtotal = allSessionOrders.reduce(
+                (sum, o) => sum + (Number(o.subtotal) || 0),
+                0
+              );
+              combinedSessionTax = Math.round(combinedSessionSubtotal * taxPercent) / 100;
+              combinedSessionTotal = Math.round((combinedSessionSubtotal + combinedSessionTax) * 100) / 100;
+              sessionOrderNumbers.length = 0;
+              allSessionOrders.forEach((o) => sessionOrderNumbers.push(o.order_number));
+            }
+          }
         }
       }
     } catch {
@@ -233,7 +658,22 @@ export async function POST(req: NextRequest) {
       activeSessionCode = generateDiningSessionToken();
     }
 
-    const response = NextResponse.json({
+    // Consolidated Running Bill structure returned directly from authoritative server calculation
+    const sessionBillPayload = {
+      tableCode: formattedCode,
+      customerName: customerName.trim(),
+      customerPhone: cleanPhone,
+      orderNumbers: sessionOrderNumbers,
+      previousSubtotal: previousSessionSubtotal,
+      newSubtotal: calculatedSubtotal,
+      subtotal: combinedSessionSubtotal,
+      taxPercent,
+      taxAmount: combinedSessionTax,
+      totalAmount: combinedSessionTotal,
+      isPaid: false,
+    };
+
+    const responsePayload = {
       success: true,
       order: {
         id: newOrderId,
@@ -253,9 +693,20 @@ export async function POST(req: NextRequest) {
         persistenceDetails,
         diningSessionId,
       },
+      sessionBill: sessionBillPayload,
       diningSessionToken: activeSessionCode,
       isNewSession,
-    });
+    };
+
+    // Cache in idempotency store if key was provided
+    if (idempotencyKey) {
+      idempotencyStore.set(idempotencyKey, {
+        responsePayload,
+        timestamp: Date.now(),
+      });
+    }
+
+    const response = NextResponse.json(responsePayload);
 
     // Set secure cookie for dining session on this table
     response.cookies.set(cookieTokenName, activeSessionCode, {
