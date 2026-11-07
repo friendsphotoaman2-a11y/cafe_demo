@@ -30,7 +30,7 @@ export interface MenuItem {
   allergens: string[];
   isAvailable: boolean;
   isFeatured?: boolean;
-  badge?: string; // e.g., "Chef's Special", "Bestseller", "New"
+  badge?: string;
   customizationGroups?: CustomizationGroup[];
 }
 
@@ -41,6 +41,12 @@ export interface MenuCategory {
   description: string;
   itemCount?: number;
 }
+
+export type TableSection =
+  | "Indoor Main"
+  | "Courtyard Patio"
+  | "Mezzanine Loft"
+  | "Window Bar";
 
 export type TableStatus =
   | "available"
@@ -54,8 +60,10 @@ export interface CafeTable {
   code: string; // e.g., "01", "02"
   name: string; // e.g., "Table 01"
   capacity: number;
-  section: "Indoor Main" | "Courtyard Patio" | "Mezzanine Loft" | "Window Bar";
+  section: TableSection;
   status: TableStatus;
+  isActive: boolean; // enable/disable table
+  qrNonce?: string; // unique token for QR link security/regeneration
   currentCustomerName?: string;
   currentCustomerPhone?: string;
   currentOrderId?: string;
@@ -69,7 +77,7 @@ export interface OrderCustomizationChoice {
 }
 
 export interface CartItem {
-  cartItemId: string; // unique key combining item + selected options
+  cartItemId: string;
   menuItem: MenuItem;
   quantity: number;
   selectedCustomizations: OrderCustomizationChoice[];
@@ -79,7 +87,8 @@ export interface CartItem {
 }
 
 export type OrderStatus =
-  | "pending"
+  | "new"
+  | "accepted"
   | "preparing"
   | "ready"
   | "served"
@@ -87,31 +96,71 @@ export type OrderStatus =
   | "cancelled";
 
 export type PaymentStatus = "unpaid" | "paid_counter";
+export type PaymentMethod = "Cash" | "UPI" | "Card" | "Other";
+
+export interface OrderItemRecord {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  customizations: OrderCustomizationChoice[];
+  classification: VegClassification;
+}
+
+export interface PaymentAuditRecord {
+  amount: number;
+  method: PaymentMethod;
+  transactionRef?: string;
+  cashierName: string;
+  paidAt: string;
+  correctionReason?: string;
+}
 
 export interface CafeOrder {
   id: string;
-  orderNumber: string; // e.g. "#TBW-1042"
+  orderNumber: string; // e.g. "#TBW-1041"
   tableCode: string;
   customerName: string;
   customerPhone: string;
-  items: {
-    menuItemId: string;
+  items: OrderItemRecord[];
+  subtotal: number;
+  taxAmount: number; // Configured GST (e.g. 5%)
+  totalAmount: number;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  paymentMethod?: PaymentMethod;
+  paymentAudit?: PaymentAuditRecord;
+  notes?: string;
+  createdAt: string;
+  timestamp: number;
+  estimatedPrepMinutes?: number;
+}
+
+// Consolidated Dining Session Bill for a Table (supports multiple orders)
+export interface TableSessionBill {
+  tableCode: string;
+  tableName: string;
+  customerName: string;
+  customerPhone: string;
+  orderNumbers: string[];
+  orderIds: string[];
+  consolidatedItems: {
+    key: string;
     name: string;
     quantity: number;
     unitPrice: number;
     totalPrice: number;
     customizations: OrderCustomizationChoice[];
-    classification: VegClassification;
   }[];
   subtotal: number;
-  taxAmount: number; // 5% GST
+  taxPercent: number;
+  taxAmount: number;
   totalAmount: number;
-  status: OrderStatus;
-  paymentStatus: PaymentStatus;
-  paymentMethod?: "Cash" | "UPI" | "Card";
-  notes?: string;
-  createdAt: string;
-  estimatedPrepMinutes?: number;
+  isAllServed: boolean;
+  isPaid: boolean;
+  paymentMethod?: PaymentMethod;
+  paymentAudit?: PaymentAuditRecord;
 }
 
 export interface CafeCustomer {
@@ -121,7 +170,7 @@ export interface CafeCustomer {
   visitsCount: number;
   totalSpent: number;
   stampsEarned: number; // 0 to 5
-  rewardEligible: boolean; // true if 5 stamps reached (6th coffee free)
+  rewardEligible: boolean;
   lastVisit: string;
   favoriteItem: string;
 }
@@ -136,7 +185,7 @@ export interface CafeSettings {
   phone: string;
   email: string;
   gstNumber: string;
-  gstRatePercent: number; // 5%
+  gstRatePercent: number; // 5% configurable
   currencySymbol: string;
   currencyCode: string;
   openingHours: string;
@@ -144,4 +193,3 @@ export interface CafeSettings {
   wifiPassword: string;
   upiId: string;
 }
-

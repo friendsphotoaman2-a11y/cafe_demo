@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
-import { DEMO_CUSTOMERS } from "@/lib/demo-data";
+import { useCafeStore } from "@/lib/store";
 import {
   Award,
   Coffee,
@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 
 export default function ControlRoomLoyaltyPage() {
-  const [customers, setCustomers] = useState(DEMO_CUSTOMERS);
+  const { customers } = useCafeStore();
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
 
   const handleSimulateRedemption = (name: string) => {
     setRedeemSuccess(
-      `Owner authorized: 6th Free Artisan Coffee redeemed for ${name}! Stamp card reset to 0/5.`
+      `Owner PIN authorized: 6th Free Signature Coffee redeemed for ${name}! Digital stamp card reset to 0/5.`
     );
     setTimeout(() => setRedeemSuccess(null), 4000);
   };
@@ -101,7 +101,7 @@ export default function ControlRoomLoyaltyPage() {
             Guest Loyalty Cards Snapshot
           </h3>
           <span className="text-xs text-zinc-500">
-            Phase 1 local simulation
+            Connected demo store state
           </span>
         </div>
 
@@ -192,4 +192,3 @@ export default function ControlRoomLoyaltyPage() {
     </div>
   );
 }
-

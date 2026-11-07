@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
-import { DEMO_CUSTOMERS } from "@/lib/demo-data";
+import { useCafeStore } from "@/lib/store";
 import { formatINR } from "@/lib/utils";
 import {
   Users,
@@ -16,13 +16,16 @@ import {
 } from "lucide-react";
 
 export default function ControlRoomCustomersPage() {
+  const { customers } = useCafeStore();
   const [search, setSearch] = useState("");
 
-  const filteredCustomers = DEMO_CUSTOMERS.filter((c) => {
+  const filteredCustomers = customers.filter((c) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return c.name.toLowerCase().includes(q) || c.phone.includes(q);
   });
+
+  const rewardEligibleCount = customers.filter((c) => c.rewardEligible).length;
 
   return (
     <div className="p-6 space-y-6">
@@ -40,18 +43,18 @@ export default function ControlRoomCustomersPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search customer name or phone..."
-            className="w-full rounded-xl border border-zinc-200 py-2 pl-9 pr-3 text-xs focus:border-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-800"
+            className="w-full rounded-xl border border-zinc-200 py-2 pl-9 pr-3 text-xs focus:border-zinc-800 focus:outline-none"
           />
         </div>
 
         <div className="flex items-center gap-3 text-xs text-zinc-600">
           <span className="font-semibold">
-            {DEMO_CUSTOMERS.length} Registered Guests
+            {customers.length} Registered Guests
           </span>
           <span className="h-3 w-px bg-zinc-300" />
           <span className="text-amber-700 font-bold flex items-center gap-1">
             <Gift className="h-3.5 w-3.5" />
-            2 Ready for Free Coffee
+            {rewardEligibleCount} Ready for Free Coffee
           </span>
         </div>
       </div>
@@ -142,4 +145,3 @@ export default function ControlRoomCustomersPage() {
     </div>
   );
 }
-

@@ -1,74 +1,158 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import ControlRoomHeader from "@/components/controlroom/Header";
-import {
-  DEMO_ORDERS,
-  DEMO_TABLES,
-  DEMO_CUSTOMERS,
-  DEMO_SETTINGS,
-} from "@/lib/demo-data";
+import { useCafeStore } from "@/lib/store";
 import { formatINR } from "@/lib/utils";
 import {
   DollarSign,
   Grid,
   ChefHat,
-  Award,
+  Receipt,
+  RotateCcw,
   ArrowRight,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
   ExternalLink,
   ReceiptText,
+  AlertTriangle,
+  Sparkles,
+  X,
+  CheckCircle2,
+  Users,
 } from "lucide-react";
 
 export default function ControlRoomDashboardPage() {
-  const activeTablesCount = DEMO_TABLES.filter(
+  const { tables, orders, customers, resetDemoData } = useCafeStore();
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+
+  // KPIs
+  const activeTablesCount = tables.filter(
     (t) => t.status !== "available"
   ).length;
 
-  const pendingOrders = DEMO_ORDERS.filter(
-    (o) => o.status === "pending" || o.status === "preparing"
-  );
+  const newOrdersCount = orders.filter((o) => o.status === "new").length;
 
-  const todayRevenue = DEMO_ORDERS.reduce((acc, o) => acc + o.totalAmount, 0);
+  const pendingKitchenCount = orders.filter(
+    (o) => o.status === "new" || o.status === "accepted" || o.status === "preparing"
+  ).length;
 
-  const totalLoyaltyStamps = DEMO_CUSTOMERS.reduce(
-    (acc, c) => acc + c.stampsEarned,
-    0
-  );
+  const outstandingBillsCount = tables.filter((t) =>
+    orders.some((o) => o.tableCode === t.code && o.paymentStatus === "unpaid")
+  ).length;
+
+  const paidOrders = orders.filter((o) => o.paymentStatus === "paid_counter");
+  const paidSalesTotal = paidOrders.reduce((acc, o) => acc + o.totalAmount, 0);
+
+  const handleConfirmReset = () => {
+    resetDemoData();
+    setIsResetModalOpen(false);
+    setResetDone(true);
+    setTimeout(() => setResetDone(false), 4000);
+  };
 
   return (
     <div className="p-6 space-y-6">
       <ControlRoomHeader
-        title="Café Overview Dashboard"
-        subtitle="Real-time operations, table occupancy, orders, and sales snapshot"
+        title="Café Operations HQ"
+        subtitle="Live floor occupancy, connected table tickets, kitchen queues, and counter billing"
       />
 
-      {/* KPI Cards Grid */}
+      {resetDone && (
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-300 p-4 text-emerald-900 flex items-center gap-3 animate-fade-in shadow-xs">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+          <span className="text-xs font-bold">
+            Demo fixtures reset to initial clean demonstration state!
+          </span>
+        </div>
+      )}
+
+      {/* Top Banner with Demo Simulation Explanation & Reset CTA */}
+      <div className="rounded-3xl border border-amber-300 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-white p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
+            <h3 className="font-serif font-bold text-base text-zinc-900">
+              Interactive Multi-Tab Demonstration Mode
+            </h3>
+          </div>
+          <p className="text-xs text-zinc-600 max-w-2xl leading-relaxed">
+            All customer table orders, kitchen ticket workflows, and cashier counter payments share a unified browser storage bus. Open a customer view in one tab and this control room in another to see live cross-tab synchronization.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setIsResetModalOpen(true)}
+          className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-xs font-bold text-amber-950 hover:bg-amber-50 transition shadow-xs"
+        >
+          <RotateCcw className="h-3.5 w-3.5 text-amber-700" />
+          <span>Reset Demo Data</span>
+        </button>
+      </div>
+
+      {/* 4 Live KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Today's Simulated Revenue */}
+        {/* KPI 1: Paid Sales */}
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              Today&apos;s Sales (Simulated)
+              Paid Demo Sales
             </span>
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
               <DollarSign className="h-5 w-5" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-zinc-900">
-              {formatINR(todayRevenue)}
+            <span className="text-2xl font-black text-zinc-900">
+              {formatINR(paidSalesTotal)}
             </span>
             <span className="block text-[11px] text-emerald-600 font-medium mt-0.5">
-              &uarr; 14% vs yesterday average
+              {paidOrders.length} settled tickets at counter
             </span>
           </div>
         </div>
 
-        {/* Card 2: Active Seated Tables */}
+        {/* KPI 2: Outstanding Counter Bills */}
+        <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              Outstanding Bills
+            </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600">
+              <Receipt className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="text-2xl font-black text-zinc-900">
+              {outstandingBillsCount} Tables
+            </span>
+            <span className="block text-[11px] text-purple-700 mt-0.5 font-medium">
+              Ready for cashier counter settlement
+            </span>
+          </div>
+        </div>
+
+        {/* KPI 3: Pending Kitchen Tickets */}
+        <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              Pending Kitchen Tickets
+            </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600">
+              <ChefHat className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="text-2xl font-black text-zinc-900">
+              {pendingKitchenCount} In-Queue
+            </span>
+            <span className="block text-[11px] text-orange-700 mt-0.5 font-medium">
+              {newOrdersCount} unaccepted new tickets
+            </span>
+          </div>
+        </div>
+
+        {/* KPI 4: Active Seated Tables */}
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
@@ -79,72 +163,32 @@ export default function ControlRoomDashboardPage() {
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-extrabold text-zinc-900">
-              {activeTablesCount} / {DEMO_TABLES.length}
+            <span className="text-2xl font-black text-zinc-900">
+              {activeTablesCount} / {tables.length}
             </span>
             <span className="block text-[11px] text-zinc-500 mt-0.5">
-              {DEMO_TABLES.length - activeTablesCount} tables available for walk-ins
-            </span>
-          </div>
-        </div>
-
-        {/* Card 3: Pending Kitchen Orders */}
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              Kitchen Tickets
-            </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
-              <ChefHat className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="text-2xl font-extrabold text-zinc-900">
-              {pendingOrders.length} In-Queue
-            </span>
-            <span className="block text-[11px] text-amber-600 mt-0.5 font-medium">
-              Average ticket time: 11 mins
-            </span>
-          </div>
-        </div>
-
-        {/* Card 4: Loyalty Stamps */}
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              Loyalty Stamps
-            </span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600">
-              <Award className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="text-2xl font-extrabold text-zinc-900">
-              {totalLoyaltyStamps} Issued
-            </span>
-            <span className="block text-[11px] text-purple-700 mt-0.5 font-medium">
-              2 guests eligible for 6th free coffee
+              {tables.length - activeTablesCount} available for walk-ins
             </span>
           </div>
         </div>
       </div>
 
-      {/* Main Grid: Tables Matrix (Left) & Recent Orders Feed (Right) */}
+      {/* Main Floor Plan & Live Orders */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Tables Matrix Preview (7 cols) */}
+        {/* Floor Plan Matrix (7 cols) */}
         <div className="lg:col-span-7 rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
             <div>
               <h3 className="font-serif text-lg font-bold text-zinc-900">
-                Floor Plan &amp; Table Status
+                Floor Plan &amp; Live Table Status
               </h3>
               <p className="text-xs text-zinc-500">
-                Click any table to simulate customer view or check active ticket
+                Click any table to open its customer ordering screen in a new tab
               </p>
             </div>
             <Link
               href="/controlroom/tables"
-              className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1"
+              className="text-xs font-bold text-amber-800 hover:text-amber-950 flex items-center gap-1"
             >
               <span>Manage Tables</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -152,13 +196,13 @@ export default function ControlRoomDashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {DEMO_TABLES.map((t) => {
+            {tables.map((t) => {
               const statusColors = {
-                available: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                occupied: "bg-blue-50 text-blue-700 border-blue-200",
-                order_pending: "bg-amber-50 text-amber-700 border-amber-200",
-                preparing: "bg-orange-50 text-orange-700 border-orange-200",
-                billed: "bg-purple-50 text-purple-700 border-purple-200",
+                available: "bg-emerald-50 text-emerald-800 border-emerald-200",
+                occupied: "bg-blue-50 text-blue-800 border-blue-200",
+                order_pending: "bg-amber-50 text-amber-800 border-amber-200",
+                preparing: "bg-orange-50 text-orange-800 border-orange-200",
+                billed: "bg-purple-50 text-purple-800 border-purple-200",
               };
 
               return (
@@ -174,56 +218,40 @@ export default function ControlRoomDashboardPage() {
                     </span>
                     <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition text-zinc-500" />
                   </div>
-                  <span className="block text-[11px] font-semibold capitalize truncate">
+                  <span className="block text-[11px] font-bold capitalize truncate">
                     {t.status.replace("_", " ")}
                   </span>
-                  <span className="block text-[10px] text-zinc-500 truncate mt-1">
+                  <span className="block text-[10px] text-zinc-600 truncate mt-1">
                     {t.currentCustomerName || `${t.capacity} Seats`}
                   </span>
                 </Link>
               );
             })}
           </div>
-
-          {/* Table Legend */}
-          <div className="pt-2 border-t border-zinc-100 flex flex-wrap items-center gap-3 text-[11px] text-zinc-600">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Available
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-amber-500" /> Order Pending
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-orange-500" /> In Kitchen
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-purple-500" /> Ready to Bill
-            </span>
-          </div>
         </div>
 
         {/* Live Orders Feed (5 cols) */}
         <div className="lg:col-span-5 rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
             <div>
               <h3 className="font-serif text-lg font-bold text-zinc-900">
-                Live Orders
+                Connected Order Stream
               </h3>
               <p className="text-xs text-zinc-500">
-                Recent tickets sent by table customers
+                Live tickets dispatched from table QR orders
               </p>
             </div>
             <Link
               href="/controlroom/orders"
-              className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1"
+              className="text-xs font-bold text-amber-800 hover:text-amber-950 flex items-center gap-1"
             >
-              <span>All Orders</span>
+              <span>View All</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
-          <div className="divide-y divide-zinc-100 space-y-2">
-            {DEMO_ORDERS.slice(0, 4).map((ord) => (
+          <div className="divide-y divide-zinc-100 space-y-2 max-h-[380px] overflow-y-auto pr-1">
+            {orders.slice(0, 5).map((ord) => (
               <div key={ord.id} className="pt-2 first:pt-0 space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
@@ -240,9 +268,18 @@ export default function ControlRoomDashboardPage() {
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>{ord.customerName} &bull; {ord.items.length} items</span>
-                  <span className="capitalize font-semibold text-amber-800">
-                    {ord.status}
+                  <span>
+                    {ord.customerName} &bull; {ord.items.length} items
+                  </span>
+                  <span
+                    className={`capitalize font-bold ${
+                      ord.paymentStatus === "paid_counter"
+                        ? "text-emerald-700"
+                        : "text-amber-800"
+                    }`}
+                  >
+                    {ord.status} &bull;{" "}
+                    {ord.paymentStatus === "paid_counter" ? "Paid" : "Unpaid"}
                   </span>
                 </div>
               </div>
@@ -260,7 +297,42 @@ export default function ControlRoomDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Confirmed Reset Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-zinc-200 space-y-4">
+            <div className="flex items-center gap-2 text-amber-600 border-b pb-3">
+              <AlertTriangle className="h-5 w-5" />
+              <h3 className="font-serif text-lg font-bold text-zinc-900">
+                Confirm Reset Demo Data
+              </h3>
+            </div>
+
+            <p className="text-xs text-zinc-600 leading-relaxed">
+              This will reset the browser demonstration storage back to the initial 12 tables and baseline orders.
+              <strong className="block text-zinc-900 mt-2">
+                Note: Project code files and future Supabase databases will never be affected.
+              </strong>
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsResetModalOpen(false)}
+                className="rounded-xl border border-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReset}
+                className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-zinc-950 hover:bg-amber-400"
+              >
+                Reset Demo Store
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

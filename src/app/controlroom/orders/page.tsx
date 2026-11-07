@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
-import { DEMO_ORDERS } from "@/lib/demo-data";
+import { useCafeStore } from "@/lib/store";
+import { DEMO_SETTINGS } from "@/lib/demo-data";
 import { CafeOrder, OrderStatus } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
 import {
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 
 export default function ControlRoomOrdersPage() {
-  const [orders, setOrders] = useState<CafeOrder[]>(DEMO_ORDERS);
+  const { orders } = useCafeStore();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<CafeOrder | null>(null);
 
@@ -30,28 +31,34 @@ export default function ControlRoomOrdersPage() {
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
-      case "pending":
+      case "new":
         return (
           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-900 border border-amber-300">
-            Pending Barista
+            1. New Ticket
+          </span>
+        );
+      case "accepted":
+        return (
+          <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-bold text-blue-900 border border-blue-300">
+            2. Accepted
           </span>
         );
       case "preparing":
         return (
           <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-[11px] font-bold text-orange-900 border border-orange-300">
-            In Kitchen
+            3. In Kitchen
           </span>
         );
       case "ready":
         return (
           <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-900 border border-emerald-300">
-            Ready to Serve
+            4. Ready to Serve
           </span>
         );
       case "served":
         return (
-          <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-bold text-blue-900 border border-blue-300">
-            Served
+          <span className="rounded-full bg-zinc-800 text-white px-2.5 py-0.5 text-[11px] font-bold">
+            5. Served
           </span>
         );
       case "completed":
@@ -80,7 +87,7 @@ export default function ControlRoomOrdersPage() {
       <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-zinc-200 bg-white p-3 shadow-xs">
         {[
           { id: "all", label: "All Orders" },
-          { id: "pending", label: "Pending Tickets" },
+          { id: "new", label: "New Tickets" },
           { id: "preparing", label: "In Kitchen" },
           { id: "ready", label: "Ready to Serve" },
           { id: "served", label: "Served at Table" },
@@ -138,7 +145,7 @@ export default function ControlRoomOrdersPage() {
                     <span className="font-semibold text-zinc-900 block">
                       {ord.customerName}
                     </span>
-                    <span className="text-[11px] text-zinc-500">
+                    <span className="text-[11px] text-zinc-500 font-mono">
                       {ord.customerPhone}
                     </span>
                   </td>
@@ -267,7 +274,7 @@ export default function ControlRoomOrdersPage() {
                 <span>{formatINR(selectedOrder.subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span>GST (5%):</span>
+                <span>GST ({DEMO_SETTINGS.gstRatePercent}%):</span>
                 <span>{formatINR(selectedOrder.taxAmount)}</span>
               </div>
               <div className="flex justify-between font-extrabold text-sm text-zinc-900 pt-1 border-t">
@@ -290,4 +297,3 @@ export default function ControlRoomOrdersPage() {
     </div>
   );
 }
-
