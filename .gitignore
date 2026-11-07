@@ -35,7 +35,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# backups and data exports
+scripts/*.json
+*.backup
+*.dump
+scripts/backup-data.json
 .env*
 !.env.example
 

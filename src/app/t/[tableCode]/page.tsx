@@ -414,12 +414,20 @@ export default function TableOrderingPage({ params }: PageProps) {
               </span>
             )}
           </div>
-          <button
-            onClick={handleSwitchCustomer}
-            className="text-[10px] font-semibold text-amber-100 hover:text-white underline hover:no-underline ml-2"
-          >
-            Not you? Switch
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/profile"
+              className="text-[10px] font-bold text-amber-950 bg-white/90 hover:bg-white px-2 py-0.5 rounded-full shadow-xs transition"
+            >
+              My Profile
+            </Link>
+            <button
+              onClick={handleSwitchCustomer}
+              className="text-[10px] font-semibold text-amber-100 hover:text-white underline hover:no-underline ml-1"
+            >
+              Switch
+            </button>
+          </div>
         </div>
       )}
 

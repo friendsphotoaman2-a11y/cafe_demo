@@ -1,22 +1,53 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
-import { useCafeStore } from "@/lib/store";
 import { formatINR } from "@/lib/utils";
 import {
   Search,
   Gift,
+  RefreshCw,
 } from "lucide-react";
 
+interface RealCustomer {
+  id: string;
+  fullName: string;
+  phone: string;
+  memberSince: string;
+  stamps: number;
+  totalVisits: number;
+  totalSpent: number;
+  rewardEligible: boolean;
+}
+
 export default function ControlRoomCustomersPage() {
-  const { customers } = useCafeStore();
+  const [customers, setCustomers] = useState<RealCustomer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  const fetchCustomers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/controlroom/customers");
+      if (res.ok) {
+        const json = await res.json();
+        setCustomers(json.customers || []);
+      }
+    } catch {
+      // fallback
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const filteredCustomers = customers.filter((c) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return c.name.toLowerCase().includes(q) || c.phone.includes(q);
+    return c.fullName.toLowerCase().includes(q) || c.phone.includes(q);
   });
 
   const rewardEligibleCount = customers.filter((c) => c.rewardEligible).length;
@@ -25,7 +56,7 @@ export default function ControlRoomCustomersPage() {
     <div className="p-6 space-y-6">
       <ControlRoomHeader
         title="Customer Directory &amp; Dining Profiles"
-        subtitle="Guest history, lifetime spend, visits count, and loyalty reward statuses"
+        subtitle="Live Supabase customer directory, lifetime spend, visits count, and loyalty statuses"
       />
 
       {/* Search and Summary */}
@@ -42,6 +73,15 @@ export default function ControlRoomCustomersPage() {
         </div>
 
         <div className="flex items-center gap-3 text-xs text-zinc-600">
+          <button
+            onClick={fetchCustomers}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 transition"
+            title="Refresh database"
+          >
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+            <span>Sync</span>
+          </button>
           <span className="font-semibold">
             {customers.length} Registered Guests
           </span>
@@ -65,80 +105,88 @@ export default function ControlRoomCustomersPage() {
                 <th className="py-3.5 px-4">Lifetime Spend</th>
                 <th className="py-3.5 px-4">Loyalty Stamps</th>
                 <th className="py-3.5 px-4">Reward Status</th>
-                <th className="py-3.5 px-4">Favorite Dish</th>
+                <th className="py-3.5 px-4">Member Since</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {filteredCustomers.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-zinc-400 text-xs">
+                    Loading customer records from Supabase...
+                  </td>
+                </tr>
+              ) : filteredCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-zinc-500 text-xs">
-                    No customer profiles yet. New guest profiles will be recorded here automatically as orders are placed via table QR codes.
+                    No customer profiles found. Real guest profiles will be recorded here automatically when orders are placed via table QR codes.
                   </td>
                 </tr>
               ) : (
                 filteredCustomers.map((cust) => (
-                <tr key={cust.id} className="hover:bg-zinc-50/60 transition">
-                  {/* Name */}
-                  <td className="py-3.5 px-4 font-bold text-zinc-900">
-                    {cust.name}
-                    <span className="block text-[10px] text-zinc-400 font-normal">
-                      Last visit: {cust.lastVisit}
-                    </span>
-                  </td>
+                  <tr key={cust.id} className="hover:bg-zinc-50/60 transition">
+                    {/* Name */}
+                    <td className="py-3.5 px-4 font-bold text-zinc-900">
+                      {cust.fullName}
+                    </td>
 
-                  {/* Phone */}
-                  <td className="py-3.5 px-4 text-zinc-600 font-mono">
-                    {cust.phone}
-                  </td>
+                    {/* Phone */}
+                    <td className="py-3.5 px-4 text-zinc-600 font-mono">
+                      {cust.phone}
+                    </td>
 
-                  {/* Visits */}
-                  <td className="py-3.5 px-4 font-bold text-zinc-800">
-                    {cust.visitsCount} visits
-                  </td>
+                    {/* Visits */}
+                    <td className="py-3.5 px-4 font-bold text-zinc-800">
+                      {cust.totalVisits} visits
+                    </td>
 
-                  {/* Spend */}
-                  <td className="py-3.5 px-4 font-extrabold text-zinc-900">
-                    {formatINR(cust.totalSpent)}
-                  </td>
+                    {/* Spend */}
+                    <td className="py-3.5 px-4 font-extrabold text-zinc-900">
+                      {formatINR(cust.totalSpent)}
+                    </td>
 
-                  {/* Stamps Visual */}
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((idx) => (
-                        <span
-                          key={idx}
-                          className={`h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                            idx <= cust.stampsEarned
-                              ? "bg-amber-400 text-zinc-950 font-black shadow-xs"
-                              : "bg-zinc-100 text-zinc-400 border border-zinc-200"
-                          }`}
-                        >
-                          {idx <= cust.stampsEarned ? "★" : idx}
+                    {/* Stamps Visual */}
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((idx) => (
+                          <span
+                            key={idx}
+                            className={`h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                              idx <= cust.stamps
+                                ? "bg-amber-400 text-zinc-950 font-black shadow-xs"
+                                : "bg-zinc-100 text-zinc-400 border border-zinc-200"
+                            }`}
+                          >
+                            {idx <= cust.stamps ? "★" : idx}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+
+                    {/* Reward Eligibility */}
+                    <td className="py-3.5 px-4">
+                      {cust.rewardEligible ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-900 border border-emerald-300">
+                          <Gift className="h-3 w-3" />
+                          Free 6th Coffee Ready
                         </span>
-                      ))}
-                    </div>
-                  </td>
+                      ) : (
+                        <span className="text-[11px] text-zinc-500">
+                          {5 - cust.stamps} more visit{5 - cust.stamps === 1 ? "" : "s"} for free coffee
+                        </span>
+                      )}
+                    </td>
 
-                  {/* Reward Eligibility */}
-                  <td className="py-3.5 px-4">
-                    {cust.rewardEligible ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-900 border border-emerald-300">
-                        <Gift className="h-3 w-3" />
-                        Free 6th Coffee Ready
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-zinc-500">
-                        {5 - cust.stampsEarned} more visit for free coffee
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Favorite Item */}
-                  <td className="py-3.5 px-4 text-zinc-600 font-medium">
-                    {cust.favoriteItem}
-                  </td>
-                </tr>
-              )))}
+                    {/* Member Since */}
+                    <td className="py-3.5 px-4 text-zinc-500">
+                      {new Date(cust.memberSince).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

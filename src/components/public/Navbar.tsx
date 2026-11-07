@@ -14,6 +14,7 @@ export default function Navbar() {
   const navLinks = [
     { label: "Home", href: "/" },
     { label: "Digital Menu", href: "/menu" },
+    { label: "My Profile", href: "/profile" },
     { label: "Our Story", href: "/about" },
     { label: "Visit & Contact", href: "/contact" },
   ];

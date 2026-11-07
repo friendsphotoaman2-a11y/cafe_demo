@@ -13,9 +13,7 @@ import {
   TableSection,
 } from "./types";
 import {
-  DEMO_ORDERS,
   DEMO_TABLES,
-  DEMO_CUSTOMERS,
   DEMO_SETTINGS,
 } from "./demo-data";
 import { createClient } from "@/lib/supabase/client";
@@ -75,7 +73,7 @@ export function useCafeStore() {
   const loadAll = useCallback(() => {
     const loadedOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
-      DEMO_ORDERS
+      []
     );
     const loadedTables = getStoredJson<CafeTable[]>(
       STORAGE_KEY_TABLES,
@@ -83,7 +81,7 @@ export function useCafeStore() {
     );
     const loadedCustomers = getStoredJson<CafeCustomer[]>(
       STORAGE_KEY_CUSTOMERS,
-      DEMO_CUSTOMERS
+      []
     );
     const loadedSession = getStoredJson<CustomerSession | null>(
       STORAGE_KEY_SESSION,
@@ -325,7 +323,7 @@ export function useCafeStore() {
     // 2. Synchronize store state
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
-      DEMO_ORDERS
+      []
     );
     const currentTables = getStoredJson<CafeTable[]>(
       STORAGE_KEY_TABLES,
@@ -333,7 +331,7 @@ export function useCafeStore() {
     );
     const currentCustomers = getStoredJson<CafeCustomer[]>(
       STORAGE_KEY_CUSTOMERS,
-      DEMO_CUSTOMERS
+      []
     );
 
     const subtotal = params.items.reduce((acc, i) => acc + i.totalPrice, 0);
@@ -432,7 +430,7 @@ export function useCafeStore() {
 
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
-      DEMO_ORDERS
+      []
     );
     const currentTables = getStoredJson<CafeTable[]>(
       STORAGE_KEY_TABLES,
@@ -472,7 +470,7 @@ export function useCafeStore() {
     (tableCode: string): TableSessionBill | null => {
       const currentOrders = getStoredJson<CafeOrder[]>(
         STORAGE_KEY_ORDERS,
-        DEMO_ORDERS
+        []
       );
       const currentTables = getStoredJson<CafeTable[]>(
         STORAGE_KEY_TABLES,
@@ -599,7 +597,7 @@ export function useCafeStore() {
 
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
-      DEMO_ORDERS
+      []
     );
     const currentTables = getStoredJson<CafeTable[]>(
       STORAGE_KEY_TABLES,
@@ -607,7 +605,7 @@ export function useCafeStore() {
     );
     const currentCustomers = getStoredJson<CafeCustomer[]>(
       STORAGE_KEY_CUSTOMERS,
-      DEMO_CUSTOMERS
+      []
     );
 
     const unpaidTableOrders = currentOrders.filter(
@@ -692,7 +690,7 @@ export function useCafeStore() {
   ): { success: boolean } => {
     const currentOrders = getStoredJson<CafeOrder[]>(
       STORAGE_KEY_ORDERS,
-      DEMO_ORDERS
+      []
     );
     const updatedOrders = currentOrders.map((o) => {
       if (o.id === orderId) {
@@ -713,9 +711,9 @@ export function useCafeStore() {
   };
 
   const resetDemoData = () => {
-    setStoredJson(STORAGE_KEY_ORDERS, DEMO_ORDERS);
+    setStoredJson(STORAGE_KEY_ORDERS, []);
     setStoredJson(STORAGE_KEY_TABLES, DEMO_TABLES);
-    setStoredJson(STORAGE_KEY_CUSTOMERS, DEMO_CUSTOMERS);
+    setStoredJson(STORAGE_KEY_CUSTOMERS, []);
     loadAll();
   };
 
