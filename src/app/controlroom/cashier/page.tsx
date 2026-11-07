@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { useCafeStore } from "@/lib/store";
-import { DEMO_SETTINGS } from "@/lib/demo-data";
 import { PaymentMethod, TableSessionBill } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
 import {
@@ -15,13 +14,7 @@ import {
   CheckCircle2,
   Printer,
   Search,
-  User,
-  Phone,
   RotateCcw,
-  AlertCircle,
-  FileText,
-  Clock,
-  Sparkles,
   ShieldAlert,
 } from "lucide-react";
 

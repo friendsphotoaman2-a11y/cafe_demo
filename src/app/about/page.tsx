@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/public/Navbar";
 import Footer from "@/components/public/Footer";
-import { Coffee, Heart, Award, Sparkles, MapPin, ArrowRight } from "lucide-react";
+import { Heart, Award, Sparkles, ArrowRight } from "lucide-react";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 
 export default function AboutPage() {

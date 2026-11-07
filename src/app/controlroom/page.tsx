@@ -15,14 +15,11 @@ import {
   ExternalLink,
   ReceiptText,
   AlertTriangle,
-  Sparkles,
-  X,
   CheckCircle2,
-  Users,
 } from "lucide-react";
 
 export default function ControlRoomDashboardPage() {
-  const { tables, orders, customers, resetDemoData } = useCafeStore();
+  const { tables, orders, resetDemoData } = useCafeStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetDone, setResetDone] = useState(false);
 

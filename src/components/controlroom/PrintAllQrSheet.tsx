@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { CafeTable } from "@/lib/types";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 import {
   generateTableQrDataUrl,
   getTableOrderingUrl,
 } from "@/lib/qr-generator";
-import { Printer, X, Download, Coffee, Wifi } from "lucide-react";
+import { Printer, X, Coffee } from "lucide-react";
 
 interface PrintAllQrSheetProps {
   isOpen: boolean;
@@ -122,9 +123,12 @@ export default function PrintAllQrSheet({
                 <div className="my-2 flex justify-center">
                   <div className="rounded-2xl border-2 border-zinc-200 bg-white p-2.5 shadow-sm">
                     {qrSrc ? (
-                      <img
+                      <Image
                         src={qrSrc}
                         alt={`QR Code Table ${table.code}`}
+                        width={144}
+                        height={144}
+                        unoptimized
                         className="h-36 w-36 object-contain"
                       />
                     ) : (

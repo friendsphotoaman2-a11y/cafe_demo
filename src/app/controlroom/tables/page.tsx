@@ -11,11 +11,9 @@ import {
   getBaseOrderingUrl,
   getTableOrderingUrl,
   setStoredQrBaseUrl,
-  resetStoredQrBaseUrl,
   DEFAULT_LAN_BASE_URL,
 } from "@/lib/qr-generator";
 import {
-  Grid,
   QrCode,
   Users,
   ExternalLink,
@@ -25,11 +23,9 @@ import {
   Power,
   X,
   Check,
-  AlertCircle,
   Globe,
   Save,
   RotateCcw,
-  Wifi,
 } from "lucide-react";
 
 export default function ControlRoomTablesPage() {
@@ -42,7 +38,6 @@ export default function ControlRoomTablesPage() {
   } = useCafeStore();
 
   const [filterSection, setFilterSection] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   // Configurable QR Base URL
   const [qrBaseUrl, setQrBaseUrl] = useState<string>(DEFAULT_LAN_BASE_URL);
@@ -135,7 +130,6 @@ export default function ControlRoomTablesPage() {
 
   const filteredTables = tables.filter((t) => {
     if (filterSection !== "all" && t.section !== filterSection) return false;
-    if (filterStatus !== "all" && t.status !== filterStatus) return false;
     return true;
   });
 
@@ -347,8 +341,6 @@ export default function ControlRoomTablesPage() {
       {/* Tables Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {filteredTables.map((table) => {
-          const isSelected = selectedTableForQr?.code === table.code;
-
           return (
             <div
               key={table.id}

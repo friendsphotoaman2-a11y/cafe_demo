@@ -6,18 +6,7 @@ import { useCafeStore } from "@/lib/store";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 import { CafeOrder, OrderStatus } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
-import {
-  ShoppingBag,
-  Filter,
-  CheckCircle2,
-  Clock,
-  Eye,
-  X,
-  CreditCard,
-  User,
-  Phone,
-  FileText,
-} from "lucide-react";
+import { Eye, X } from "lucide-react";
 
 export default function ControlRoomOrdersPage() {
   const { orders } = useCafeStore();

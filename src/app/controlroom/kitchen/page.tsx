@@ -1,21 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { useCafeStore } from "@/lib/store";
-import { CafeOrder, OrderStatus } from "@/lib/types";
+import { CafeOrder } from "@/lib/types";
 import {
-  ChefHat,
   Clock,
-  CheckCircle2,
-  AlertCircle,
   Play,
   Check,
   Volume2,
   VolumeX,
-  Flame,
   User,
-  Coffee,
   CheckCheck,
 } from "lucide-react";
 
@@ -25,7 +20,7 @@ export default function ControlRoomKitchenPage() {
   const prevOrderCount = useRef(orders.length);
 
   // Play synthesized web audio bell on new order arrival
-  const playChime = () => {
+  const playChime = useCallback(() => {
     if (!isAudioEnabled || typeof window === "undefined") return;
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -49,20 +44,19 @@ export default function ControlRoomKitchenPage() {
     } catch {
       // AudioContext policy: Ignore if user hasn't interacted yet
     }
-  };
+  }, [isAudioEnabled]);
 
   useEffect(() => {
     if (orders.length > prevOrderCount.current) {
       playChime();
     }
     prevOrderCount.current = orders.length;
-  }, [orders.length]);
+  }, [orders.length, playChime]);
 
   const newTickets = orders.filter((o) => o.status === "new");
   const acceptedTickets = orders.filter((o) => o.status === "accepted");
   const preparingTickets = orders.filter((o) => o.status === "preparing");
   const readyTickets = orders.filter((o) => o.status === "ready");
-  const servedTickets = orders.filter((o) => o.status === "served").slice(0, 5);
 
   const renderTicketCard = (ord: CafeOrder) => (
     <div

@@ -4,7 +4,7 @@ import React from "react";
 import Image from "next/image";
 import { MenuItem } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
-import { Flame, Thermometer, Plus, Check } from "lucide-react";
+import { Flame, Thermometer, Plus } from "lucide-react";
 
 interface MenuItemCardProps {
   item: MenuItem;

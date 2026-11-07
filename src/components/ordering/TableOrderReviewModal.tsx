@@ -231,7 +231,11 @@ export default function TableOrderReviewModal({
               <button
                 onClick={() => {
                   handleCloseModal();
-                  if (onViewOrders) onViewOrders();
+                  if (onViewBill) {
+                    onViewBill();
+                  } else if (onViewOrders) {
+                    onViewOrders();
+                  }
                 }}
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-white border border-zinc-300 py-3 text-xs font-bold text-zinc-800 hover:bg-zinc-50 transition"
               >

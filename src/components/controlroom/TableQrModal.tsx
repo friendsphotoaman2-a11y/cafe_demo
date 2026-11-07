@@ -18,7 +18,6 @@ import {
   X,
   Check,
   Wifi,
-  Sparkles,
 } from "lucide-react";
 
 interface TableQrModalProps {
@@ -132,9 +131,12 @@ export default function TableQrModal({
             <div className="my-4 flex justify-center">
               <div className="rounded-2xl border-4 border-cafe-900/10 bg-white p-3 shadow-inner">
                 {qrDataUrl ? (
-                  <img
+                  <Image
                     src={qrDataUrl}
                     alt={`QR Code for Table ${table.code}`}
+                    width={192}
+                    height={192}
+                    unoptimized
                     className="h-48 w-48 object-contain"
                   />
                 ) : (

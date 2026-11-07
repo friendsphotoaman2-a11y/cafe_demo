@@ -7,15 +7,10 @@ import { DEMO_MENU_ITEMS, DEMO_CATEGORIES } from "@/lib/demo-data";
 import { MenuItem } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
 import {
-  UtensilsCrossed,
   Plus,
   Search,
-  Check,
   X,
   Edit2,
-  AlertCircle,
-  Thermometer,
-  Flame,
 } from "lucide-react";
 
 export default function ControlRoomMenuPage() {

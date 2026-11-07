@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, X, AlertCircle, RefreshCw, Hash, ArrowRight } from "lucide-react";
 import jsQR from "jsqr";
@@ -8,6 +8,26 @@ import jsQR from "jsqr";
 interface QrScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+function parseTableCodeFromText(text: string): string | null {
+  const trimmed = text.trim();
+  // Pattern 1: URL like https://.../t/04 or /t/04
+  const urlMatch = trimmed.match(/\/t\/([a-zA-Z0-9_-]+)/i);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1].padStart(2, "0");
+  }
+  // Pattern 2: "table 4" or "Table-04"
+  const tableMatch = trimmed.match(/table[\s_-]*(\d+)/i);
+  if (tableMatch && tableMatch[1]) {
+    return tableMatch[1].padStart(2, "0");
+  }
+  // Pattern 3: plain number "1" or "01"
+  const numberMatch = trimmed.match(/^(\d{1,2})$/);
+  if (numberMatch && numberMatch[1]) {
+    return numberMatch[1].padStart(2, "0");
+  }
+  return null;
 }
 
 export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps) {
@@ -23,22 +43,7 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
   const [manualCode, setManualCode] = useState<string>("");
   const [scanSuccessCode, setScanSuccessCode] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isOpen) {
-      stopCamera();
-      setCameraError(null);
-      setScanSuccessCode(null);
-      return;
-    }
-
-    startCamera();
-
-    return () => {
-      stopCamera();
-    };
-  }, [isOpen]);
-
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
@@ -50,9 +55,53 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  };
+  }, []);
 
-  const startCamera = async () => {
+  const handleDetectedCode = useCallback(
+    (scannedString: string) => {
+      const tableCode = parseTableCodeFromText(scannedString);
+      if (tableCode) {
+        setScanSuccessCode(tableCode);
+        stopCamera();
+        setTimeout(() => {
+          onClose();
+          router.push(`/t/${tableCode}`);
+        }, 700);
+      }
+    },
+    [onClose, router, stopCamera]
+  );
+
+  const requestScan = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      animFrameRef.current = requestAnimationFrame(requestScan);
+      return;
+    }
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "dontInvert",
+    });
+
+    if (code && code.data) {
+      handleDetectedCode(code.data);
+      return;
+    }
+
+    animFrameRef.current = requestAnimationFrame(requestScan);
+  }, [handleDetectedCode]);
+
+  const startCamera = useCallback(async () => {
     setCameraError(null);
     setIsStartingCamera(true);
 
@@ -106,68 +155,22 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
         );
       }
     }
-  };
+  }, [requestScan]);
 
-  const parseTableCodeFromText = (text: string): string | null => {
-    const trimmed = text.trim();
-    // Pattern 1: URL like https://.../t/04 or /t/04
-    const urlMatch = trimmed.match(/\/t\/([a-zA-Z0-9_-]+)/i);
-    if (urlMatch && urlMatch[1]) {
-      return urlMatch[1].padStart(2, "0");
-    }
-    // Pattern 2: "table 4" or "Table-04"
-    const tableMatch = trimmed.match(/table[\s_-]*(\d+)/i);
-    if (tableMatch && tableMatch[1]) {
-      return tableMatch[1].padStart(2, "0");
-    }
-    // Pattern 3: plain number "1" or "01"
-    const numberMatch = trimmed.match(/^(\d{1,2})$/);
-    if (numberMatch && numberMatch[1]) {
-      return numberMatch[1].padStart(2, "0");
-    }
-    return null;
-  };
-
-  const handleDetectedCode = (scannedString: string) => {
-    const tableCode = parseTableCodeFromText(scannedString);
-    if (tableCode) {
-      setScanSuccessCode(tableCode);
+  useEffect(() => {
+    if (!isOpen) {
       stopCamera();
-      setTimeout(() => {
-        onClose();
-        router.push(`/t/${tableCode}`);
-      }, 700);
-    }
-  };
-
-  const requestScan = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      animFrameRef.current = requestAnimationFrame(requestScan);
+      setCameraError(null);
+      setScanSuccessCode(null);
       return;
     }
 
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
+    startCamera();
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert",
-    });
-
-    if (code && code.data) {
-      handleDetectedCode(code.data);
-      return;
-    }
-
-    animFrameRef.current = requestAnimationFrame(requestScan);
-  };
+    return () => {
+      stopCamera();
+    };
+  }, [isOpen, startCamera, stopCamera]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -33,13 +33,6 @@ const AuthContext = createContext<AuthContextType>({
   hasPermission: () => false,
 });
 
-const STAFF_PROFILES: Record<StaffRole, { name: string; email: string }> = {
-  owner: { name: "Aman (Café Owner)", email: "owner@brewandbean.in" },
-  manager: { name: "Siddharth (Store Manager)", email: "manager@brewandbean.in" },
-  cashier: { name: "Rahul (Head Cashier)", email: "cashier@brewandbean.in" },
-  kitchen: { name: "Chef Vikram (Lead Barista)", email: "kitchen@brewandbean.in" },
-};
-
 const SESSION_STORAGE_KEY = "tbw_staff_auth_session_v3";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

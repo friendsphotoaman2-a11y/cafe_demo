@@ -3,7 +3,7 @@
 import React, { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth, StaffRole } from "@/lib/auth-context";
-import { ShieldAlert, ArrowLeft, Lock } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
 interface StaffRouteGuardProps {

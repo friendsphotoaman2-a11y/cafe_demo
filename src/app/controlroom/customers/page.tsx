@@ -5,13 +5,7 @@ import ControlRoomHeader from "@/components/controlroom/Header";
 import { useCafeStore } from "@/lib/store";
 import { formatINR } from "@/lib/utils";
 import {
-  Users,
   Search,
-  Award,
-  Phone,
-  Calendar,
-  Coffee,
-  CheckCircle2,
   Gift,
 } from "lucide-react";
 

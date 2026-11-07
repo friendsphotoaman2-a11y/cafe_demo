@@ -21,9 +21,7 @@ import {
   MapPin,
   Sparkles,
   Coffee,
-  CheckCircle2,
   HeartHandshake,
-  ShieldCheck,
   ChevronRight,
 } from "lucide-react";
 

@@ -13,11 +13,7 @@ import {
   ArrowRight,
   Receipt,
   FileText,
-  Clock,
   CheckCircle2,
-  ChefHat,
-  Flame,
-  AlertCircle,
   History,
 } from "lucide-react";
 

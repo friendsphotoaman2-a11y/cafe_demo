@@ -19,13 +19,12 @@ import {
   Menu,
   X,
   Sparkles,
-  LogOut,
 } from "lucide-react";
 
 export default function ControlRoomSidebar() {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const navItems = [
     { label: "Dashboard", href: "/controlroom", icon: LayoutDashboard, roles: ["owner", "manager", "cashier", "kitchen"] },

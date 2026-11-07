@@ -10,22 +10,16 @@ import {
   DEFAULT_LAN_BASE_URL,
 } from "@/lib/qr-generator";
 import {
-  Settings,
   Save,
   Building2,
   Receipt,
   Wifi,
-  Clock,
   Printer,
-  Sparkles,
   CheckCircle2,
-  QrCode,
   Database,
   RefreshCw,
   AlertCircle,
   FileCode,
-  Server,
-  ShieldCheck,
 } from "lucide-react";
 
 export default function ControlRoomSettingsPage() {

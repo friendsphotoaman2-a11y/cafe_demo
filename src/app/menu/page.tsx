@@ -9,9 +9,8 @@ import ItemDetailModal from "@/components/public/ItemDetailModal";
 import {
   DEMO_CATEGORIES,
   DEMO_MENU_ITEMS,
-  DEMO_SETTINGS,
 } from "@/lib/demo-data";
-import { MenuItem, VegClassification } from "@/lib/types";
+import { MenuItem } from "@/lib/types";
 import { Search, SlidersHorizontal, Sparkles, AlertCircle } from "lucide-react";
 
 export default function MenuPage() {

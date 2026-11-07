@@ -7,7 +7,6 @@ import { DEMO_SETTINGS } from "@/lib/demo-data";
 import {
   MapPin,
   Phone,
-  Mail,
   Clock,
   Wifi,
   Send,

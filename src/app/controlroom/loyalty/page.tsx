@@ -7,10 +7,6 @@ import {
   Award,
   Coffee,
   CheckCircle2,
-  Gift,
-  QrCode,
-  ShieldCheck,
-  Sparkles,
   Lock,
 } from "lucide-react";
 

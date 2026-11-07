@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   CafeOrder,
   CafeTable,
   CafeCustomer,
   OrderStatus,
-  PaymentStatus,
   PaymentMethod,
   OrderCustomizationChoice,
   VegClassification,

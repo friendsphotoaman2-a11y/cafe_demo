@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo, use } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import CategoryFilter from "@/components/public/CategoryFilter";
 import MenuItemCard from "@/components/public/MenuItemCard";
@@ -25,13 +24,8 @@ import {
   Search,
   Sparkles,
   AlertCircle,
-  Clock,
   CheckCircle2,
   Receipt,
-  ChevronRight,
-  Flame,
-  ChefHat,
-  ArrowRight,
 } from "lucide-react";
 
 interface PageProps {

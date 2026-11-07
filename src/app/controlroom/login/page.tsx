@@ -5,13 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, StaffRole } from "@/lib/auth-context";
 import {
   Lock,
-  Coffee,
   CheckCircle2,
   ShieldCheck,
   UserCheck,
-  ArrowRight,
-  LogOut,
-  Sparkles,
 } from "lucide-react";
 
 function LoginForm() {
@@ -51,7 +47,7 @@ function LoginForm() {
     try {
       setIsSubmitting(true);
       await loginWithGoogle();
-    } catch (err: unknown) {
+    } catch (_err: unknown) {
       setIsSubmitting(false);
       setAuthError("Google OAuth redirection error. Check Supabase Google provider configuration.");
     }

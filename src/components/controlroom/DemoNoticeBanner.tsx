@@ -1,13 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Database, ShieldCheck, Wifi, CheckCircle2, AlertCircle } from "lucide-react";
+import { Database, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useCafeStore } from "@/lib/store";
 
 export default function DemoNoticeBanner() {
   const { user } = useAuth();
-  const { isRealtimeConnected } = useCafeStore();
   const [dbState, setDbState] = useState<{
     statusText: string;
     isMigrated: boolean;

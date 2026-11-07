@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { Coffee, MapPin, Clock, Phone, Mail, Heart } from "lucide-react";
+import { Coffee, MapPin, Clock, Phone, Mail } from "lucide-react";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 
 export default function Footer() {
