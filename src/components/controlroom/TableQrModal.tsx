@@ -26,6 +26,7 @@ interface TableQrModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRegenerateQr: (tableCode: string) => void;
+  customBaseUrl?: string;
 }
 
 export default function TableQrModal({
@@ -33,6 +34,7 @@ export default function TableQrModal({
   isOpen,
   onClose,
   onRegenerateQr,
+  customBaseUrl,
 }: TableQrModalProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copied, setCopied] = useState(false);
@@ -40,13 +42,13 @@ export default function TableQrModal({
 
   useEffect(() => {
     if (table && isOpen) {
-      generateTableQrDataUrl(table.code, table.qrNonce).then(setQrDataUrl);
+      generateTableQrDataUrl(table.code, table.qrNonce, customBaseUrl).then(setQrDataUrl);
     }
-  }, [table, isOpen]);
+  }, [table, isOpen, customBaseUrl]);
 
   if (!isOpen || !table) return null;
 
-  const orderingUrl = getTableOrderingUrl(table.code, table.qrNonce);
+  const orderingUrl = getTableOrderingUrl(table.code, table.qrNonce, customBaseUrl);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(orderingUrl);
@@ -141,6 +143,16 @@ export default function TableQrModal({
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Exact Encoded URL Confirmation */}
+            <div className="my-2.5 rounded-xl bg-amber-50/80 p-2 border border-amber-200/80">
+              <span className="text-[9px] uppercase tracking-wider font-extrabold text-amber-800 block">
+                Encoded Scan URL
+              </span>
+              <p className="font-mono text-[11px] font-bold text-zinc-900 break-all select-all">
+                {orderingUrl}
+              </p>
             </div>
 
             {/* Instruction */}

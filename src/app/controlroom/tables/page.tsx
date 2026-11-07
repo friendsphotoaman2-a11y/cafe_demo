@@ -1,12 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import TableQrModal from "@/components/controlroom/TableQrModal";
 import PrintAllQrSheet from "@/components/controlroom/PrintAllQrSheet";
 import { useCafeStore } from "@/lib/store";
 import { CafeTable, TableSection, TableStatus } from "@/lib/types";
+import {
+  getBaseOrderingUrl,
+  getTableOrderingUrl,
+  setStoredQrBaseUrl,
+  resetStoredQrBaseUrl,
+  DEFAULT_LAN_BASE_URL,
+} from "@/lib/qr-generator";
 import {
   Grid,
   QrCode,
@@ -19,6 +26,10 @@ import {
   X,
   Check,
   AlertCircle,
+  Globe,
+  Save,
+  RotateCcw,
+  Wifi,
 } from "lucide-react";
 
 export default function ControlRoomTablesPage() {
@@ -32,6 +43,34 @@ export default function ControlRoomTablesPage() {
 
   const [filterSection, setFilterSection] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  // Configurable QR Base URL
+  const [qrBaseUrl, setQrBaseUrl] = useState<string>(DEFAULT_LAN_BASE_URL);
+  const [inputBaseUrl, setInputBaseUrl] = useState<string>(DEFAULT_LAN_BASE_URL);
+  const [urlSavedFeedback, setUrlSavedFeedback] = useState<boolean>(false);
+
+  useEffect(() => {
+    const active = getBaseOrderingUrl();
+    setQrBaseUrl(active);
+    setInputBaseUrl(active);
+  }, []);
+
+  const handleSaveBaseUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputBaseUrl.trim()) return;
+    setStoredQrBaseUrl(inputBaseUrl);
+    setQrBaseUrl(inputBaseUrl.trim().replace(/\/+$/, ""));
+    setUrlSavedFeedback(true);
+    setTimeout(() => setUrlSavedFeedback(false), 2500);
+  };
+
+  const handleResetLan = () => {
+    setInputBaseUrl(DEFAULT_LAN_BASE_URL);
+    setStoredQrBaseUrl(DEFAULT_LAN_BASE_URL);
+    setQrBaseUrl(DEFAULT_LAN_BASE_URL);
+    setUrlSavedFeedback(true);
+    setTimeout(() => setUrlSavedFeedback(false), 2500);
+  };
 
   // Modals state
   const [selectedTableForQr, setSelectedTableForQr] = useState<CafeTable | null>(
@@ -149,6 +188,115 @@ export default function ControlRoomTablesPage() {
         subtitle="Generate unique scannable QRs, manage floor capacities, and export printable tent cards"
       />
 
+      {/* Owner-Editable Public QR Base URL Panel */}
+      <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-amber-600 shrink-0" />
+            <div>
+              <h3 className="font-serif text-sm font-bold text-zinc-900">
+                Public QR Ordering Base URL
+              </h3>
+              <p className="text-[11px] text-zinc-500">
+                Encoded into all table QR codes. Use your laptop Wi-Fi IP for phone testing or your HTTPS public domain in production.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 self-start sm:self-auto">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono text-[11px] font-bold text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded">
+              Active: {qrBaseUrl}
+            </span>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveBaseUrl} className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={inputBaseUrl}
+                onChange={(e) => setInputBaseUrl(e.target.value)}
+                placeholder="e.g. http://10.84.23.121:3000 or https://yourdomain.com"
+                className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs font-mono text-zinc-900 focus:border-zinc-800 focus:outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-bold text-white hover:bg-zinc-800 transition active:scale-95"
+            >
+              <Save className="h-3.5 w-3.5 text-amber-300" />
+              <span>Apply Base URL</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetLan}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 transition active:scale-95"
+              title="Reset to 10.84.23.121:3000"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
+              <span>Wi-Fi (10.84.23.121)</span>
+            </button>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 pt-1">
+            <span className="font-semibold text-zinc-400">Quick Presets:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setInputBaseUrl("http://10.84.23.121:3000");
+                setStoredQrBaseUrl("http://10.84.23.121:3000");
+                setQrBaseUrl("http://10.84.23.121:3000");
+                setUrlSavedFeedback(true);
+                setTimeout(() => setUrlSavedFeedback(false), 2500);
+              }}
+              className="rounded-lg bg-zinc-100 px-2 py-0.5 hover:bg-zinc-200 font-mono text-[10px] text-zinc-700"
+            >
+              Wi-Fi: 10.84.23.121:3000
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  setInputBaseUrl(window.location.origin);
+                  setStoredQrBaseUrl(window.location.origin);
+                  setQrBaseUrl(window.location.origin);
+                  setUrlSavedFeedback(true);
+                  setTimeout(() => setUrlSavedFeedback(false), 2500);
+                }
+              }}
+              className="rounded-lg bg-zinc-100 px-2 py-0.5 hover:bg-zinc-200 font-mono text-[10px] text-zinc-700"
+            >
+              Current Browser Host
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInputBaseUrl("https://brewandbean.in");
+                setStoredQrBaseUrl("https://brewandbean.in");
+                setQrBaseUrl("https://brewandbean.in");
+                setUrlSavedFeedback(true);
+                setTimeout(() => setUrlSavedFeedback(false), 2500);
+              }}
+              className="rounded-lg bg-zinc-100 px-2 py-0.5 hover:bg-zinc-200 font-mono text-[10px] text-zinc-700"
+            >
+              https://brewandbean.in
+            </button>
+          </div>
+
+          {urlSavedFeedback && (
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl animate-fade-in">
+              <Check className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Base URL updated! All table QRs regenerated with {qrBaseUrl}</span>
+            </div>
+          )}
+        </form>
+      </div>
+
       {/* Action and Filter Controls Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs">
         <div className="flex flex-wrap items-center gap-2">
@@ -251,6 +399,18 @@ export default function ControlRoomTablesPage() {
                       )}
                     </div>
                   )}
+
+                  {/* QR Scan URL Display on Table Card */}
+                  <div className="pt-2 border-t border-zinc-100">
+                    <div className="rounded-xl bg-amber-50/60 p-2 border border-amber-200/60 text-[10px] space-y-0.5">
+                      <span className="text-amber-800 font-bold uppercase tracking-wider block text-[9px]">
+                        Scannable QR URL
+                      </span>
+                      <p className="font-mono text-zinc-900 font-bold truncate select-all">
+                        {getTableOrderingUrl(table.code, table.qrNonce, qrBaseUrl)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -287,7 +447,7 @@ export default function ControlRoomTablesPage() {
                 </div>
 
                 <Link
-                  href={`/t/${table.code}`}
+                  href={getTableOrderingUrl(table.code, table.qrNonce, qrBaseUrl)}
                   target="_blank"
                   className="w-full flex items-center justify-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-zinc-800"
                 >
@@ -308,6 +468,7 @@ export default function ControlRoomTablesPage() {
         onRegenerateQr={(code) => {
           regenerateTableQr(code);
         }}
+        customBaseUrl={qrBaseUrl}
       />
 
       {/* Print All Sheet Modal */}
@@ -315,6 +476,7 @@ export default function ControlRoomTablesPage() {
         tables={tables.filter((t) => t.isActive)}
         isOpen={isPrintAllOpen}
         onClose={() => setIsPrintAllOpen(false)}
+        customBaseUrl={qrBaseUrl}
       />
 
       {/* Add Table Modal */}

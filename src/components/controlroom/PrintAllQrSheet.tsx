@@ -3,19 +3,24 @@
 import React, { useEffect, useState } from "react";
 import { CafeTable } from "@/lib/types";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
-import { generateTableQrDataUrl } from "@/lib/qr-generator";
+import {
+  generateTableQrDataUrl,
+  getTableOrderingUrl,
+} from "@/lib/qr-generator";
 import { Printer, X, Download, Coffee, Wifi } from "lucide-react";
 
 interface PrintAllQrSheetProps {
   isOpen: boolean;
   onClose: () => void;
   tables: CafeTable[];
+  customBaseUrl?: string;
 }
 
 export default function PrintAllQrSheet({
   isOpen,
   onClose,
   tables,
+  customBaseUrl,
 }: PrintAllQrSheetProps) {
   const [qrMap, setQrMap] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(true);
@@ -29,7 +34,7 @@ export default function PrintAllQrSheet({
     async function loadAllQrs() {
       const results: Record<string, string> = {};
       for (const t of tables) {
-        results[t.code] = await generateTableQrDataUrl(t.code, t.qrNonce);
+        results[t.code] = await generateTableQrDataUrl(t.code, t.qrNonce, customBaseUrl);
       }
       if (isMounted) {
         setQrMap(results);
@@ -41,7 +46,7 @@ export default function PrintAllQrSheet({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, tables]);
+  }, [isOpen, tables, customBaseUrl]);
 
   if (!isOpen) return null;
 
@@ -128,6 +133,13 @@ export default function PrintAllQrSheet({
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Exact Encoded URL Confirmation */}
+                <div className="px-2 my-1">
+                  <span className="font-mono text-[9px] font-bold text-zinc-800 bg-amber-50/80 px-2 py-0.5 rounded border border-amber-200 block truncate select-all">
+                    {getTableOrderingUrl(table.code, table.qrNonce, customBaseUrl)}
+                  </span>
                 </div>
 
                 {/* Instructions */}

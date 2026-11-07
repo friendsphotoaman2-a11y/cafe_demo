@@ -5,6 +5,11 @@ import ControlRoomHeader from "@/components/controlroom/Header";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 import { CafeSettings } from "@/lib/types";
 import {
+  getBaseOrderingUrl,
+  setStoredQrBaseUrl,
+  DEFAULT_LAN_BASE_URL,
+} from "@/lib/qr-generator";
+import {
   Settings,
   Save,
   Building2,
@@ -25,6 +30,7 @@ import {
 
 export default function ControlRoomSettingsPage() {
   const [settings, setSettings] = useState<CafeSettings>(DEMO_SETTINGS);
+  const [qrBaseUrl, setQrBaseUrl] = useState<string>(DEFAULT_LAN_BASE_URL);
   const [savedToast, setSavedToast] = useState(false);
   const [dbStatus, setDbStatus] = useState<{
     loading: boolean;
@@ -33,6 +39,10 @@ export default function ControlRoomSettingsPage() {
     error?: string;
     hint?: string;
   }>({ loading: true });
+
+  useEffect(() => {
+    setQrBaseUrl(getBaseOrderingUrl());
+  }, []);
 
   const checkDbStatus = async () => {
     setDbStatus({ loading: true });
@@ -62,6 +72,7 @@ export default function ControlRoomSettingsPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    setStoredQrBaseUrl(qrBaseUrl);
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 3000);
   };
@@ -216,6 +227,31 @@ export default function ControlRoomSettingsPage() {
                 }
                 className="w-full rounded-xl border border-zinc-200 p-2.5 text-xs focus:border-zinc-800 focus:outline-none font-mono"
               />
+            </div>
+
+            <div className="sm:col-span-3 pt-2 border-t border-zinc-100">
+              <label className="font-semibold block text-zinc-700 mb-1">
+                Public QR Ordering Base URL (Encoded into Table QRs)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={qrBaseUrl}
+                  onChange={(e) => setQrBaseUrl(e.target.value)}
+                  placeholder="http://10.84.23.121:3000 or https://yourdomain.com"
+                  className="w-full rounded-xl border border-zinc-200 p-2.5 text-xs focus:border-zinc-800 focus:outline-none font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setQrBaseUrl(DEFAULT_LAN_BASE_URL)}
+                  className="shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100"
+                >
+                  Reset Wi-Fi IP
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-1">
+                Use your laptop Wi-Fi IP for phone testing or your HTTPS production domain when deployed.
+              </p>
             </div>
           </div>
         </div>

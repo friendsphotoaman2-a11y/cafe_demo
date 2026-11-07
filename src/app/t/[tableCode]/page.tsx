@@ -103,9 +103,9 @@ export default function TableOrderingPage({ params }: PageProps) {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
-          item.name.toLowerCase().includes(q) ||
-          item.description.toLowerCase().includes(q) ||
-          item.flavour.toLowerCase().includes(q)
+          (item.name || "").toLowerCase().includes(q) ||
+          (item.description || "").toLowerCase().includes(q) ||
+          (item.flavour || "").toLowerCase().includes(q)
         );
       }
       return true;

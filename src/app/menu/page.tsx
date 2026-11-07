@@ -35,12 +35,12 @@ export default function MenuPage() {
       // Search query match
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesName = item.name.toLowerCase().includes(q);
-        const matchesDesc = item.description.toLowerCase().includes(q);
-        const matchesIngredient = item.ingredients.some((ing) =>
+        const matchesName = (item.name || "").toLowerCase().includes(q);
+        const matchesDesc = (item.description || "").toLowerCase().includes(q);
+        const matchesIngredient = (item.ingredients || []).some((ing) =>
           ing.toLowerCase().includes(q)
         );
-        const matchesFlavour = item.flavour.toLowerCase().includes(q);
+        const matchesFlavour = (item.flavour || "").toLowerCase().includes(q);
         if (!matchesName && !matchesDesc && !matchesIngredient && !matchesFlavour) {
           return false;
         }
