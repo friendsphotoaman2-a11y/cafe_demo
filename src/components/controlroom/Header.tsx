@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ExternalLink, ShieldCheck, LogOut, User } from "lucide-react";
+import { ExternalLink, LogOut, User, QrCode } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
@@ -28,7 +28,7 @@ export default function ControlRoomHeader({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {/* Active staff user pill */}
           {user && (
             <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs">
@@ -61,14 +61,13 @@ export default function ControlRoomHeader({
             <ExternalLink className="h-3.5 w-3.5 text-zinc-400" />
           </Link>
 
-          {/* Table 04 test quick link */}
+          {/* Floor & Table QR codes management */}
           <Link
-            href="/t/04"
-            target="_blank"
+            href="/controlroom/tables"
             className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800 transition"
           >
-            <span>Table 04 View</span>
-            <ExternalLink className="h-3.5 w-3.5 text-amber-300" />
+            <QrCode className="h-3.5 w-3.5 text-amber-300" />
+            <span>Manage Tables</span>
           </Link>
         </div>
       </div>
