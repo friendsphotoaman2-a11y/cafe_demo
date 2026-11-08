@@ -29,7 +29,6 @@ import {
   CheckCircle2,
   Receipt,
   X,
-  ArrowRight,
 } from "lucide-react";
 
 interface PageProps {
@@ -445,46 +444,50 @@ export default function TableOrderingPage({ params }: PageProps) {
       )}
 
       {/* 4. Compact Ordering Hero & View Tabs */}
-      <section className="bg-cafe-950 text-white px-4 py-3.5 shadow-xs">
+      <section className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-amber-950 text-white px-4 py-4 shadow-md">
         <div className="mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
-              <span>Contactless Dining</span>
+            <div className="flex items-center gap-2 text-amber-300 text-xs font-bold">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Table {formattedCode} Active Session</span>
               <span>&bull;</span>
-              <span>Multiple Ordering Rounds</span>
+              <span className="text-zinc-300">Contactless QR Dining</span>
             </div>
-            <h1 className="font-serif text-lg sm:text-2xl font-bold mt-0.5">
-              Table {formattedCode} Ordering
+            <h1 className="font-serif text-xl sm:text-2xl font-black mt-1">
+              Table {formattedCode} &bull; {currentTable.section}
             </h1>
+            <p className="text-[11px] text-zinc-300 font-light mt-0.5">
+              Order multiple rounds anytime &bull; Your running bill consolidates at the counter
+            </p>
           </div>
 
           {/* Navigation Tabs: Menu / My Orders / Running Bill */}
-          <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl backdrop-blur-xs self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 bg-white/10 p-1.5 rounded-2xl backdrop-blur-md self-start sm:self-auto border border-white/10 shadow-inner">
             <button
               onClick={() => setActiveViewTab("menu")}
-              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              className={`rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
                 activeViewTab === "menu"
-                  ? "bg-amber-400 text-cafe-950 shadow-xs"
+                  ? "bg-amber-400 text-zinc-950 shadow-md"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
-              Menu
+              Artisan Menu
             </button>
             <button
               onClick={() => setActiveViewTab("orders")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
                 activeViewTab === "orders"
-                  ? "bg-amber-400 text-cafe-950 shadow-xs"
+                  ? "bg-amber-400 text-zinc-950 shadow-md"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
               <span>My Orders</span>
               {effectiveOrders.length > 0 && (
                 <span
-                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
                     activeViewTab === "orders"
-                      ? "bg-cafe-950 text-white"
-                      : "bg-white/20 text-white"
+                      ? "bg-zinc-950 text-amber-300"
+                      : "bg-amber-400 text-zinc-950"
                   }`}
                 >
                   {effectiveOrders.length}
@@ -493,17 +496,17 @@ export default function TableOrderingPage({ params }: PageProps) {
             </button>
             <button
               onClick={() => setActiveViewTab("bill")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
                 activeViewTab === "bill"
-                  ? "bg-amber-400 text-cafe-950 shadow-xs"
+                  ? "bg-amber-400 text-zinc-950 shadow-md"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
               <Receipt className="h-3.5 w-3.5" />
-              <span>Bill</span>
+              <span>Table Bill</span>
               {effectiveBill && effectiveBill.totalAmount > 0 && (
-                <span className="text-[10px] opacity-80">
-                  {formatINR(effectiveBill.totalAmount)}
+                <span className={`text-[10px] font-bold ${activeViewTab === "bill" ? "text-zinc-950" : "text-amber-300"}`}>
+                  ({formatINR(effectiveBill.totalAmount)})
                 </span>
               )}
             </button>
@@ -675,27 +678,30 @@ export default function TableOrderingPage({ params }: PageProps) {
                       </div>
                     </div>
 
-                    {/* Sequential Progress Bar */}
-                    <div className="space-y-1">
-                      <div className="grid grid-cols-4 gap-1 text-center text-[9px] font-bold">
-                        <span className={stepInfo.step >= 1 ? "text-amber-600" : "text-zinc-300"}>
-                          1. Received
+                    {/* 5-Step Sequential Progress Bar */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="grid grid-cols-5 gap-1 text-center text-[8px] sm:text-[9px] font-bold">
+                        <span className={stepInfo.step >= 1 ? "text-amber-600 font-black" : "text-zinc-300"}>
+                          1. Queued
                         </span>
-                        <span className={stepInfo.step >= 2 ? "text-blue-600" : "text-zinc-300"}>
+                        <span className={stepInfo.step >= 2 ? "text-blue-600 font-black" : "text-zinc-300"}>
                           2. Accepted
                         </span>
-                        <span className={stepInfo.step >= 3 ? "text-orange-600" : "text-zinc-300"}>
+                        <span className={stepInfo.step >= 3 ? "text-orange-600 font-black" : "text-zinc-300"}>
                           3. Brewing
                         </span>
-                        <span className={stepInfo.step >= 4 ? "text-emerald-600" : "text-zinc-300"}>
-                          4. Ready/Served
+                        <span className={stepInfo.step >= 4 ? "text-emerald-600 font-black" : "text-zinc-300"}>
+                          4. Ready
+                        </span>
+                        <span className={stepInfo.step >= 5 ? "text-zinc-900 font-black" : "text-zinc-300"}>
+                          5. Served
                         </span>
                       </div>
-                      <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden flex">
+                      <div className="h-2 w-full rounded-full bg-zinc-100 overflow-hidden flex border border-zinc-200">
                         <div
-                          className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-500 transition-all duration-500"
+                          className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-500 transition-all duration-500 rounded-full"
                           style={{
-                            width: `${(Math.min(stepInfo.step, 4) / 4) * 100}%`,
+                            width: `${(Math.min(stepInfo.step, 5) / 5) * 100}%`,
                           }}
                         />
                       </div>
@@ -837,27 +843,6 @@ export default function TableOrderingPage({ params }: PageProps) {
             </div>
           )}
         </main>
-      )}
-
-      {/* Floating Bottom Cart Bar (if items in cart and drawer closed) */}
-      {cartItems.length > 0 && !isCartDrawerOpen && (
-        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto">
-          <button
-            onClick={() => setIsCartDrawerOpen(true)}
-            className="w-full flex items-center justify-between rounded-2xl bg-cafe-950 text-white p-3.5 shadow-xl hover:bg-cafe-900 transition active:scale-98 border border-cafe-800"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-400 text-cafe-950 text-xs font-black">
-                {totalCartCount}
-              </span>
-              <span className="text-xs font-bold">View Cart &bull; Round {effectiveOrders.length + 1}</span>
-            </div>
-            <div className="flex items-center gap-1.5 font-black text-amber-300 text-sm">
-              <span>{formatINR(cartItems.reduce((acc, i) => acc + i.totalPrice, 0))}</span>
-              <ArrowRight className="h-4 w-4" />
-            </div>
-          </button>
-        </div>
       )}
 
       {/* Switch Customer Confirmation Dialog (replaces browser confirm) */}

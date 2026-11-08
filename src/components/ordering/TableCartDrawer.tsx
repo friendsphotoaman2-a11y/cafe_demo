@@ -196,13 +196,13 @@ export default function TableCartDrawer({
                   <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 uppercase tracking-wide">
                       <History className="h-4 w-4 text-amber-700" />
-                      <span>Section A: Previously Ordered</span>
+                      <span>Confirmed Table Orders</span>
                       <span className="rounded-full bg-amber-200 px-1.5 py-0.2 text-[10px]">
                         {previousOrders.length}
                       </span>
                     </div>
                     <span className="text-[10px] text-amber-800 font-medium">
-                      In Kitchen &bull; Non-editable
+                      In Kitchen &bull; Round 1 to {previousOrders.length}
                     </span>
                   </div>
 
@@ -285,7 +285,7 @@ export default function TableCartDrawer({
                 <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 uppercase tracking-wide">
                     <ShoppingBag className="h-4 w-4 text-cafe-700" />
-                    <span>Section B: Current Cart (New Items)</span>
+                    <span>Current Round Selection</span>
                     {newItemsCount > 0 && (
                       <span className="rounded-full bg-cafe-900 text-white px-1.5 py-0.2 text-[10px]">
                         {newItemsCount}
@@ -293,7 +293,7 @@ export default function TableCartDrawer({
                     )}
                   </div>
                   <span className="text-[10px] text-zinc-500">
-                    {newItemsCount > 0 ? "Adjust qty or customize" : "Empty"}
+                    {newItemsCount > 0 ? "Round " + currentRound : "Empty"}
                   </span>
                 </div>
 
@@ -438,7 +438,7 @@ export default function TableCartDrawer({
                 <div className="flex items-center justify-between border-b border-cafe-200 pb-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-cafe-950 uppercase tracking-wide">
                     <Receipt className="h-4 w-4 text-cafe-800" />
-                    <span>Section C: Running Table Bill</span>
+                    <span>Consolidated Table Bill</span>
                   </div>
                   <span className="text-[10px] font-bold text-amber-800 bg-amber-200/60 rounded px-1.5 py-0.5">
                     Pay at Counter
