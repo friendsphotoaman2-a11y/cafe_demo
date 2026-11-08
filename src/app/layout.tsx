@@ -24,6 +24,8 @@ export const metadata: Metadata = {
     "Specialty single-origin Chikmagalur coffees, 36-hr sourdough sandwiches, and contactless table QR ordering platform.",
 };
 
+import { ToastProvider } from "@/components/ui/Toast";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,7 +36,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased bg-[#FAF7F2] text-zinc-900`}
       >
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

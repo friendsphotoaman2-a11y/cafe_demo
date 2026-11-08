@@ -306,39 +306,47 @@ export default function ControlRoomDashboardPage() {
           </div>
 
           <div className="divide-y divide-zinc-100 space-y-2 max-h-[380px] overflow-y-auto pr-1">
-            {localOrders.slice(0, 5).map((ord) => (
-              <div key={ord.id} className="pt-2 first:pt-0 space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-zinc-900">
-                      {ord.orderNumber}
-                    </span>
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
-                      Table {ord.tableCode}
+            {localOrders.length === 0 ? (
+              <div className="py-8 text-center text-xs text-zinc-400">
+                <Receipt className="h-8 w-8 mx-auto mb-2 text-zinc-300 stroke-1" />
+                <p className="font-semibold text-zinc-600">No active orders</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Live tickets dispatched from table QR orders will appear here.</p>
+              </div>
+            ) : (
+              localOrders.slice(0, 5).map((ord) => (
+                <div key={ord.id} className="pt-2 first:pt-0 space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-zinc-900">
+                        {ord.orderNumber}
+                      </span>
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                        Table {ord.tableCode}
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-zinc-900">
+                      {formatINR(ord.totalAmount)}
                     </span>
                   </div>
-                  <span className="font-extrabold text-zinc-900">
-                    {formatINR(ord.totalAmount)}
-                  </span>
-                </div>
 
-                <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>
-                    {ord.customerName} &bull; {ord.items.length} items
-                  </span>
-                  <span
-                    className={`capitalize font-bold ${
-                      ord.paymentStatus === "paid_counter"
-                        ? "text-emerald-700"
-                        : "text-amber-800"
-                    }`}
-                  >
-                    {ord.status} &bull;{" "}
-                    {ord.paymentStatus === "paid_counter" ? "Paid" : "Unpaid"}
-                  </span>
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                    <span>
+                      {ord.customerName} &bull; {ord.items.length} items
+                    </span>
+                    <span
+                      className={`capitalize font-bold ${
+                        ord.paymentStatus === "paid_counter"
+                          ? "text-emerald-700"
+                          : "text-amber-800"
+                      }`}
+                    >
+                      {ord.status} &bull;{" "}
+                      {ord.paymentStatus === "paid_counter" ? "Paid" : "Unpaid"}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           <div className="pt-2">

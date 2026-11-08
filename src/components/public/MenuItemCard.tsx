@@ -4,7 +4,7 @@ import React from "react";
 import Image from "next/image";
 import { MenuItem } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
-import { Flame, Thermometer, Plus } from "lucide-react";
+import { Flame, Thermometer, Plus, Sparkles } from "lucide-react";
 
 interface MenuItemCardProps {
   item: MenuItem;
@@ -19,90 +19,93 @@ export default function MenuItemCard({
   onQuickAdd,
   isTableMode = false,
 }: MenuItemCardProps) {
+  const isVeg = item.classification === "veg";
+  const isVegan = item.classification === "vegan";
+
   return (
     <div
       onClick={() => onSelect(item)}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-cafe-200/80 bg-white shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-cafe-200/90 bg-white shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.99] hover:border-cafe-400"
     >
-      {/* Image Container */}
-      <div className="relative h-48 w-full overflow-hidden bg-cafe-100">
+      {/* Media Aspect Container */}
+      <div className="relative aspect-[16/10] w-full overflow-hidden bg-cafe-100/60">
         <Image
           src={item.image}
           alt={item.name}
           fill
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          className="object-cover transition-transform duration-500 group-hover:scale-105"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
-        {/* Top Badges */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-          {/* Veg / Non-Veg Indicator */}
-          <div className="flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold backdrop-blur-md shadow-sm">
+        {/* Top Floating Badges */}
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
+          {/* Veg / Vegan / Non-Veg Indicator */}
+          <div className="flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 shadow-xs backdrop-blur-xs">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                item.classification === "veg"
+              className={`h-2 w-2 rounded-full ${
+                isVeg
                   ? "bg-emerald-600 ring-2 ring-emerald-300"
-                  : item.classification === "vegan"
+                  : isVegan
                   ? "bg-teal-600 ring-2 ring-teal-300"
                   : "bg-red-600 ring-2 ring-red-300"
               }`}
             />
-            <span className="capitalize text-zinc-800 text-[11px]">
+            <span className="text-[10px] font-black uppercase text-zinc-800 tracking-tight">
               {item.classification}
             </span>
           </div>
 
-          {/* Special Badge if any */}
+          {/* Special Chef/Bestseller Badge */}
           {item.badge && (
-            <span className="rounded-full bg-amber-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
-              {item.badge}
+            <span className="flex items-center gap-0.5 rounded-full bg-amber-400/95 px-2 py-0.5 text-[10px] font-black uppercase text-cafe-950 shadow-xs backdrop-blur-xs">
+              <Sparkles className="h-2.5 w-2.5" />
+              <span>{item.badge}</span>
             </span>
           )}
         </div>
 
-        {/* Temperature & Spice tags at bottom of image */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
-          <span className="flex items-center gap-1 rounded-md bg-black/60 px-2 py-0.5 backdrop-blur-sm text-[11px]">
-            <Thermometer className="h-3 w-3 text-amber-300" />
-            {item.servingTemperature}
+        {/* Bottom Floating Temperature & Spice chips */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white pointer-events-none">
+          <span className="flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-xs">
+            <Thermometer className="h-2.5 w-2.5 text-amber-300" />
+            <span>{item.servingTemperature}</span>
           </span>
 
           {item.spiceLevel !== "None" && (
-            <span className="flex items-center gap-1 rounded-md bg-black/60 px-2 py-0.5 backdrop-blur-sm text-[11px] text-amber-300">
-              <Flame className="h-3 w-3" />
-              {item.spiceLevel} Spice
+            <span className="flex items-center gap-0.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 backdrop-blur-xs">
+              <Flame className="h-2.5 w-2.5" />
+              <span>{item.spiceLevel}</span>
             </span>
           )}
         </div>
       </div>
 
       {/* Card Body */}
-      <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-2 mb-1.5">
-          <h3 className="font-serif text-lg font-bold text-cafe-950 group-hover:text-cafe-700 transition-colors line-clamp-1">
-            {item.name}
-          </h3>
-          <span className="text-base font-extrabold text-cafe-900 shrink-0">
-            {formatINR(item.price)}
-          </span>
+      <div className="flex flex-1 flex-col p-3 sm:p-4 justify-between gap-2">
+        <div className="space-y-1">
+          <div className="flex items-start justify-between gap-1.5">
+            <h3 className="font-serif text-sm sm:text-base font-bold text-cafe-950 group-hover:text-amber-800 transition-colors line-clamp-1 leading-snug">
+              {item.name}
+            </h3>
+            <span className="text-sm sm:text-base font-black text-cafe-950 shrink-0">
+              {formatINR(item.price)}
+            </span>
+          </div>
+
+          <p className="text-[11px] sm:text-xs text-zinc-500 line-clamp-2 leading-relaxed">
+            {item.description}
+          </p>
         </div>
 
-        <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed mb-3">
-          {item.description}
-        </p>
-
-        {/* Flavour note */}
-        <div className="mb-4 rounded-lg bg-cafe-50 px-2.5 py-1.5 text-[11px] text-cafe-800 border border-cafe-200/50">
-          <span className="font-semibold text-cafe-950">Profile: </span>
-          {item.flavour}
-        </div>
-
-        {/* Footer Actions */}
-        <div className="mt-auto flex items-center justify-between pt-2 border-t border-cafe-100">
-          <span className="text-xs font-semibold text-cafe-600 hover:text-cafe-900">
-            View Details &rarr;
-          </span>
+        {/* Flavour Note & Action Button */}
+        <div className="pt-2 border-t border-cafe-100 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="text-[10px] text-zinc-400 line-clamp-1">
+              <strong className="text-zinc-600 font-bold">Notes: </strong>
+              {item.flavour}
+            </span>
+          </div>
 
           {isTableMode && (
             <button
@@ -111,10 +114,11 @@ export default function MenuItemCard({
                 if (onQuickAdd) onQuickAdd(item);
                 else onSelect(item);
               }}
-              className="inline-flex items-center gap-1.5 rounded-full bg-cafe-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-cafe-800 active:scale-95 transition"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1 rounded-xl bg-cafe-950 px-3 py-1.5 text-xs font-bold text-amber-300 shadow-xs hover:bg-cafe-800 active:scale-95 transition shrink-0"
+              aria-label={`Add ${item.name} to order`}
             >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Add</span>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add</span>
             </button>
           )}
         </div>
@@ -122,4 +126,3 @@ export default function MenuItemCard({
     </div>
   );
 }
-

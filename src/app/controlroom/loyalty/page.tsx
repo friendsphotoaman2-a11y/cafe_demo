@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { formatINR } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   Award,
   Coffee,
@@ -35,6 +36,7 @@ export default function ControlRoomLoyaltyPage() {
   const [loading, setLoading] = useState(true);
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
+  const [confirmAccount, setConfirmAccount] = useState<RealLoyaltyAccount | null>(null);
 
   const fetchLoyalty = useCallback(async () => {
     try {
@@ -55,7 +57,7 @@ export default function ControlRoomLoyaltyPage() {
     fetchLoyalty();
   }, [fetchLoyalty]);
 
-  const handleRedeem = async (acc: RealLoyaltyAccount) => {
+  const handleRedeemClick = (acc: RealLoyaltyAccount) => {
     if (!acc.rewardEligible && acc.stamps < 5) {
       setActionMsg({
         type: "error",
@@ -63,10 +65,13 @@ export default function ControlRoomLoyaltyPage() {
       });
       return;
     }
+    setConfirmAccount(acc);
+  };
 
-    if (!confirm(`Authorize redemption of 6th Free Artisan Coffee for ${acc.customerName}?`)) {
-      return;
-    }
+  const executeRedeem = async () => {
+    if (!confirmAccount) return;
+    const acc = confirmAccount;
+    setConfirmAccount(null);
 
     try {
       setIsRedeeming(acc.id);
@@ -297,7 +302,7 @@ export default function ControlRoomLoyaltyPage() {
                 <div>
                   {acc.rewardEligible || acc.stamps >= 5 ? (
                     <button
-                      onClick={() => handleRedeem(acc)}
+                      onClick={() => handleRedeemClick(acc)}
                       disabled={isRedeeming === acc.id}
                       className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 py-2.5 text-xs font-bold text-zinc-950 hover:bg-amber-400 transition shadow-sm active:scale-95 disabled:opacity-50"
                     >
@@ -322,6 +327,17 @@ export default function ControlRoomLoyaltyPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmAccount !== null}
+        title="Authorize Free Coffee Reward"
+        message={`Are you sure you want to authorize redemption of the 6th Free Artisan Coffee for ${confirmAccount?.customerName || "this customer"}? This will reset their current stamp card to 0/5 for the next cycle.`}
+        confirmLabel="Authorize & Redeem"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={executeRedeem}
+        onCancel={() => setConfirmAccount(null)}
+      />
     </div>
   );
 }

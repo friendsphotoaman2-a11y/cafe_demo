@@ -3,6 +3,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaffRole } from "@/lib/server-auth";
 import { OrderStatus } from "@/lib/types";
 
+// Strict forward-only state machine transitions
+const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  new: ["accepted", "cancelled"],
+  accepted: ["preparing", "cancelled"],
+  preparing: ["ready"],
+  ready: ["served"],
+  served: ["completed"],
+  completed: [],
+  cancelled: [],
+};
+
 export async function PATCH(req: NextRequest) {
   try {
     // 1. Mandatory Server-Side Staff Authorization Check
@@ -23,7 +34,7 @@ export async function PATCH(req: NextRequest) {
 
     // 2. Body validation
     const body = await req.json();
-    const { orderId, nextStatus } = body;
+    const { orderId, nextStatus, expectedPreviousStatus } = body;
 
     const validStatuses: OrderStatus[] = [
       "new",
@@ -50,45 +61,109 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    let supabaseUpdated = false;
+    const supabase = createAdminClient();
+
+    // 3. Fetch canonical current order state from Supabase
+    const { data: currentOrder, error: fetchErr } = await supabase
+      .from("orders")
+      .select("id, status, table_id, order_number, payment_status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (fetchErr || !currentOrder) {
+      return NextResponse.json(
+        { error: "Order not found in database." },
+        { status: 404 }
+      );
+    }
+
+    const currentStatus = currentOrder.status as OrderStatus;
+
+    // 4. Idempotent check: if already in requested status, return success cleanly
+    if (currentStatus === nextStatus) {
+      return NextResponse.json({
+        success: true,
+        orderId,
+        status: nextStatus,
+        previousStatus: currentStatus,
+        orderNumber: currentOrder.order_number,
+        idempotent: true,
+      });
+    }
+
+    // 5. Concurrency / expected previous status validation
+    if (expectedPreviousStatus && expectedPreviousStatus !== currentStatus) {
+      return NextResponse.json(
+        {
+          error: `Concurrency conflict: Order was expected to be "${expectedPreviousStatus}", but is currently "${currentStatus}".`,
+          currentStatus,
+          orderId,
+        },
+        { status: 409 }
+      );
+    }
+
+    // 6. Strict forward-only state machine validation
+    const allowedNext = ALLOWED_TRANSITIONS[currentStatus] || [];
+    if (!allowedNext.includes(nextStatus)) {
+      return NextResponse.json(
+        {
+          error: `Illegal status transition: Cannot change order from "${currentStatus}" to "${nextStatus}". Allowed: ${allowedNext.join(", ") || "none"}`,
+          currentStatus,
+          requestedStatus: nextStatus,
+        },
+        { status: 422 }
+      );
+    }
+
+    // 7. Atomic update with state guard to prevent race conditions
+    const { data: updatedOrder, error: updateErr } = await supabase
+      .from("orders")
+      .update({
+        status: nextStatus,
+      })
+      .eq("id", orderId)
+      .eq("status", currentStatus) // atomic CAS condition
+      .select("id, status, table_id, order_number, payment_status")
+      .maybeSingle();
+
+    if (updateErr || !updatedOrder) {
+      return NextResponse.json(
+        {
+          error: "Failed to update order status. The order state may have changed concurrently.",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 8. Update table status if applicable
     let tableStatusUpdated: string | null = null;
-
-    try {
-      const supabase = createAdminClient();
-
-      const { data: order, error } = await supabase
-        .from("orders")
-        .update({ status: nextStatus })
-        .eq("id", orderId)
-        .select("id, table_id, status")
-        .maybeSingle();
-
-      if (!error && order && order.table_id) {
-        supabaseUpdated = true;
-        let tableStatus = "occupied";
-        if (nextStatus === "preparing") tableStatus = "preparing";
-        if (nextStatus === "ready" || nextStatus === "served")
-          tableStatus = "occupied";
-
-        await supabase
-          .from("restaurant_tables")
-          .update({ status: tableStatus })
-          .eq("id", order.table_id);
-
-        tableStatusUpdated = tableStatus;
+    if (updatedOrder.table_id) {
+      let targetTableStatus = "occupied";
+      if (nextStatus === "preparing") {
+        targetTableStatus = "preparing";
+      } else if (nextStatus === "served" || nextStatus === "ready" || nextStatus === "accepted") {
+        targetTableStatus = "occupied";
       }
-    } catch {
-      supabaseUpdated = false;
+
+      await supabase
+        .from("restaurant_tables")
+        .update({ status: targetTableStatus })
+        .eq("id", updatedOrder.table_id);
+
+      tableStatusUpdated = targetTableStatus;
     }
 
     return NextResponse.json({
       success: true,
-      orderId,
-      nextStatus,
+      orderId: updatedOrder.id,
+      orderNumber: updatedOrder.order_number,
+      previousStatus: currentStatus,
+      status: updatedOrder.status,
+      nextStatus: updatedOrder.status,
+      tableStatusUpdated,
       updatedBy: staff.fullName,
       staffRole: staff.role,
-      supabaseUpdated,
-      tableStatusUpdated,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Internal Server Error";

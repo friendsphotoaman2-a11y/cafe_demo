@@ -8,6 +8,8 @@ import ItemDetailModal from "@/components/public/ItemDetailModal";
 import TableCustomerOnboardingModal from "@/components/ordering/TableCustomerOnboardingModal";
 import TableCartDrawer from "@/components/ordering/TableCartDrawer";
 import TableOrderReviewModal from "@/components/ordering/TableOrderReviewModal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import { useCafeStore } from "@/lib/store";
 import { DEMO_CATEGORIES, DEMO_MENU_ITEMS, DEMO_SETTINGS } from "@/lib/demo-data";
 import { formatINR } from "@/lib/utils";
@@ -26,6 +28,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Receipt,
+  X,
+  ArrowRight,
 } from "lucide-react";
 
 interface PageProps {
@@ -38,6 +42,7 @@ export default function TableOrderingPage({ params }: PageProps) {
   const unwrappedParams = use(params);
   const rawCode = unwrappedParams.tableCode || "01";
   const formattedCode = rawCode.padStart(2, "0");
+  const { showToast } = useToast();
 
   const {
     tables,
@@ -77,6 +82,7 @@ export default function TableOrderingPage({ params }: PageProps) {
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
   const [isRememberedCustomer, setIsRememberedCustomer] = useState<boolean>(false);
   const [customerLoyalty, setCustomerLoyalty] = useState<{ stamps: number; totalVisits: number } | null>(null);
+  const [isSwitchConfirmOpen, setIsSwitchConfirmOpen] = useState(false);
 
   // Review modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState<boolean>(false);
@@ -106,7 +112,7 @@ export default function TableOrderingPage({ params }: PageProps) {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          // 1. Remembered customer device identification (works across ALL tables)
+          // 1. Remembered customer device identification
           if (data.rememberedCustomer) {
             setIsRememberedCustomer(true);
             setCustomerName(data.session?.guestName || data.rememberedCustomer.fullName);
@@ -122,7 +128,6 @@ export default function TableOrderingPage({ params }: PageProps) {
             if (data.session.guestPhone) setCustomerPhone(data.session.guestPhone);
             setIsSessionClosed(data.isClosed || data.session.status === "closed");
           } else {
-            // New visit on a clean table (e.g. customer moved to Table 07)
             setIsSessionClosed(false);
           }
           if (data.orders && Array.isArray(data.orders)) {
@@ -178,32 +183,26 @@ export default function TableOrderingPage({ params }: PageProps) {
     quantity: number,
     selectedCustomizations: OrderCustomizationChoice[]
   ) => {
-    if (effectiveBill?.isPaid || isSessionClosed) {
-      alert("This table session is already paid and closed. Please scan the table QR code to start a new dining session.");
-      return;
-    }
-    const customSuffix = selectedCustomizations
+    const custKey = selectedCustomizations
       .map((c) => c.optionName)
       .sort()
-      .join("-");
-    const cartItemId = `${item.id}_${customSuffix || "default"}`;
+      .join("|");
+    const cartItemId = `${item.id}__${custKey}`;
 
-    const optionDeltas = selectedCustomizations.reduce(
-      (acc, opt) => acc + opt.priceDelta,
-      0
-    );
-    const unitPrice = item.price + optionDeltas;
+    const unitPrice =
+      item.price +
+      selectedCustomizations.reduce((sum, c) => sum + c.priceDelta, 0);
     const totalPrice = unitPrice * quantity;
 
     setCartItems((prev) => {
-      const existingIndex = prev.findIndex((ci) => ci.cartItemId === cartItemId);
-      if (existingIndex > -1) {
+      const existingIdx = prev.findIndex((ci) => ci.cartItemId === cartItemId);
+      if (existingIdx > -1) {
         const updated = [...prev];
-        const newQty = updated[existingIndex].quantity + quantity;
-        updated[existingIndex] = {
-          ...updated[existingIndex],
+        const newQty = updated[existingIdx].quantity + quantity;
+        updated[existingIdx] = {
+          ...updated[existingIdx],
           quantity: newQty,
-          totalPrice: unitPrice * newQty,
+          totalPrice: updated[existingIdx].unitPrice * newQty,
         };
         return updated;
       } else {
@@ -220,25 +219,26 @@ export default function TableOrderingPage({ params }: PageProps) {
         ];
       }
     });
+
+    showToast(`Added ${quantity}× ${item.name} to order`);
   };
 
-  const handleUpdateQuantity = (cartItemId: string, delta: number) => {
-    setCartItems((prev) => {
-      return prev
-        .map((item) => {
-          if (item.cartItemId === cartItemId) {
-            const newQty = item.quantity + delta;
-            if (newQty <= 0) return null;
-            return {
+  const handleUpdateQuantity = (cartItemId: string, newQty: number) => {
+    if (newQty <= 0) {
+      handleRemoveItem(cartItemId);
+      return;
+    }
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.cartItemId === cartItemId
+          ? {
               ...item,
               quantity: newQty,
               totalPrice: item.unitPrice * newQty,
-            };
-          }
-          return item;
-        })
-        .filter(Boolean) as CartItem[];
-    });
+            }
+          : item
+      )
+    );
   };
 
   const handleRemoveItem = (cartItemId: string) => {
@@ -264,6 +264,7 @@ export default function TableOrderingPage({ params }: PageProps) {
         body: JSON.stringify({ fullName: name, phone }),
       });
       setIsRememberedCustomer(true);
+      showToast(`Welcome to Table ${formattedCode}, ${name}!`);
     } catch (e) {
       console.warn("Device registration:", e);
     }
@@ -272,17 +273,17 @@ export default function TableOrderingPage({ params }: PageProps) {
     }
   };
 
-  const handleSwitchCustomer = async () => {
-    if (confirm(`Switch guest profile away from ${customerName || "current user"}?`)) {
-      try {
-        await fetch("/api/customer/identity", { method: "DELETE" });
-      } catch {}
-      setCustomerName("");
-      setCustomerPhone("");
-      setIsRememberedCustomer(false);
-      setCustomerLoyalty(null);
-      setIsOnboardingModalOpen(true);
-    }
+  const confirmSwitchCustomer = async () => {
+    try {
+      await fetch("/api/customer/identity", { method: "DELETE" });
+    } catch {}
+    setCustomerName("");
+    setCustomerPhone("");
+    setIsRememberedCustomer(false);
+    setCustomerLoyalty(null);
+    setIsSwitchConfirmOpen(false);
+    setIsOnboardingModalOpen(true);
+    showToast("Profile switched. Enter details for new guest.", "info");
   };
 
   const handleConfirmOrder = async (notes?: string) => {
@@ -317,81 +318,82 @@ export default function TableOrderingPage({ params }: PageProps) {
       case "accepted":
         return { step: 2, label: "Kitchen Accepted", color: "text-blue-600" };
       case "preparing":
-        return { step: 3, label: "Chef Preparing", color: "text-orange-600" };
+        return { step: 3, label: "Barista Brewing", color: "text-orange-600" };
       case "ready":
         return { step: 4, label: "Ready to Serve", color: "text-emerald-600" };
       case "served":
       case "completed":
-        return { step: 5, label: "Served at Table", color: "text-zinc-800" };
+        return { step: 5, label: "Delivered to Table", color: "text-zinc-900" };
       default:
         return { step: 1, label: "Received", color: "text-amber-600" };
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-zinc-900 pb-28">
-      {/* Table Header Bar */}
-      <header className="sticky top-0 z-40 border-b border-cafe-200 bg-[#FAF7F2]/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-zinc-900 pb-24">
+      {/* 1. Mobile Header (Compact, 52px, Sticky with Safe Area support) */}
+      <header className="sticky top-0 z-40 border-b border-cafe-200/90 bg-[#FAF7F2]/95 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6">
+          {/* Logo & Table Pill */}
+          <div className="flex items-center gap-2.5">
             <Link
               href="/"
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-cafe-900 text-amber-300 shadow-sm"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-cafe-950 text-amber-300 shadow-xs hover:bg-cafe-900 transition"
               aria-label="Back to home"
             >
-              <Coffee className="h-5 w-5" />
+              <Coffee className="h-4.5 w-4.5" />
             </Link>
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-serif text-base font-bold text-cafe-950">
+              <div className="flex items-center gap-1.5 leading-none">
+                <span className="font-serif text-sm font-bold text-cafe-950">
                   {DEMO_SETTINGS.brandName}
                 </span>
-                <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-black uppercase text-cafe-950">
-                  Table {formattedCode}
+                <span className="rounded-lg bg-amber-400 px-2 py-0.5 text-[10px] font-black uppercase text-cafe-950 shadow-2xs">
+                  T-{formattedCode}
                 </span>
               </div>
-              <p className="text-[10px] text-zinc-500">
-                {currentTable.section} &bull; Contactless Ordering
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                {currentTable.section}
               </p>
             </div>
           </div>
 
+          {/* Right Header: Profile & Cart Action */}
           <div className="flex items-center gap-2">
             {/* Customer Pill */}
             {customerName ? (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleSwitchCustomer}
-                  title="Click to switch guest"
-                  className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 border border-zinc-200 shadow-xs hover:border-amber-400 transition"
-                >
-                  <User className="h-3.5 w-3.5 text-cafe-700" />
-                  <span className="max-w-[90px] truncate">{customerName}</span>
-                  {isRememberedCustomer && (
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" title="Remembered Device" />
-                  )}
-                </button>
-              </div>
+              <button
+                onClick={() => setIsSwitchConfirmOpen(true)}
+                title="Switch Guest Session"
+                className="min-h-[44px] flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-semibold text-zinc-800 border border-zinc-200/90 shadow-2xs hover:border-amber-400 transition"
+              >
+                <User className="h-3.5 w-3.5 text-cafe-700" />
+                <span className="max-w-[80px] sm:max-w-[120px] truncate font-bold">
+                  {customerName.split(" ")[0]}
+                </span>
+                {isRememberedCustomer && (
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                )}
+              </button>
             ) : (
               <button
                 onClick={() => setIsOnboardingModalOpen(true)}
-                className="flex items-center gap-1.5 rounded-full bg-amber-400/20 px-3 py-1.5 text-xs font-semibold text-amber-950 border border-amber-300"
+                className="min-h-[44px] flex items-center gap-1 rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold text-amber-950 border border-amber-300/80"
               >
                 <User className="h-3.5 w-3.5 text-amber-800" />
-                <span className="hidden sm:inline">Set Your Name</span>
-                <span className="sm:hidden">Guest</span>
+                <span>Guest</span>
               </button>
             )}
 
-            {/* Cart Button */}
+            {/* Cart Button with Animated Counter Badge */}
             <button
               onClick={() => setIsCartDrawerOpen(true)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-cafe-900 text-white shadow-sm hover:bg-cafe-800 transition"
-              aria-label="View Cart"
+              className="relative min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-cafe-950 text-white shadow-xs hover:bg-cafe-900 active:scale-95 transition"
+              aria-label="View Order Cart"
             >
               <ShoppingBag className="h-5 w-5 text-amber-300" />
               {totalCartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-extrabold text-white">
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-black text-white shadow-xs animate-scale-up">
                   {totalCartCount}
                 </span>
               )}
@@ -400,30 +402,31 @@ export default function TableOrderingPage({ params }: PageProps) {
         </div>
       </header>
 
-      {/* Welcome Back Banner for Remembered Customer Across Any Table QR */}
+      {/* 2. Compact Welcome Greeting Bar for Remembered Customer */}
       {isRememberedCustomer && customerName && !effectiveBill?.isPaid && (
-        <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-500 text-white px-4 py-2 text-xs shadow-xs flex items-center justify-between border-b border-amber-600">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-200 fill-amber-200" />
-            <span>
-              Welcome back, <strong className="font-bold underline">{customerName}</strong>! Table {formattedCode} is ready for you.
+        <div className="bg-gradient-to-r from-amber-50 via-amber-100/70 to-amber-50 border-b border-amber-200/80 px-4 py-1.5 text-xs text-amber-950 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 truncate">
+            <Sparkles className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="truncate">
+              Welcome back, <strong className="font-bold">{customerName.split(" ")[0]}</strong>! Table {formattedCode} is active.
             </span>
             {customerLoyalty && customerLoyalty.stamps > 0 && (
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-amber-100 border border-white/30 hidden sm:inline-block">
+              <span className="rounded-full bg-amber-200/80 px-2 py-0.2 text-[10px] font-black text-amber-900 ml-1 shrink-0">
                 ★ {customerLoyalty.stamps}/5 Stamps
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 ml-2">
             <Link
               href="/profile"
-              className="text-[10px] font-bold text-amber-950 bg-white/90 hover:bg-white px-2 py-0.5 rounded-full shadow-xs transition"
+              className="text-[10px] font-bold text-cafe-950 hover:underline"
             >
-              My Profile
+              Profile
             </Link>
+            <span className="text-zinc-300">&bull;</span>
             <button
-              onClick={handleSwitchCustomer}
-              className="text-[10px] font-semibold text-amber-100 hover:text-white underline hover:no-underline ml-1"
+              onClick={() => setIsSwitchConfirmOpen(true)}
+              className="text-[10px] font-medium text-amber-800 hover:text-amber-950 hover:underline"
             >
               Switch
             </button>
@@ -431,39 +434,37 @@ export default function TableOrderingPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* Session Paid / Closed Notice */}
+      {/* 3. Session Settled Notice */}
       {(effectiveBill?.isPaid || isSessionClosed) && (
-        <div className="bg-emerald-700 text-white px-4 py-2.5 text-center text-xs font-bold shadow-sm flex items-center justify-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+        <div className="bg-emerald-600 text-white px-4 py-2 text-center text-xs font-bold shadow-xs flex items-center justify-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-200" />
           <span>
-            Table {formattedCode} dining session has been settled &amp; closed. Thank you for visiting!
+            Table {formattedCode} bill has been settled at counter. Thank you!
           </span>
         </div>
       )}
 
-      {/* Hero Table Banner */}
-      <section className="bg-gradient-to-r from-cafe-950 via-cafe-900 to-cafe-950 text-white py-5 px-4 sm:px-6">
-        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {/* 4. Compact Ordering Hero & View Tabs */}
+      <section className="bg-cafe-950 text-white px-4 py-3.5 shadow-xs">
+        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-1.5 rounded-md bg-amber-400/20 px-2 py-0.5 text-xs font-bold text-amber-300 border border-amber-400/30 mb-1">
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Table Ordering Session</span>
+            <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+              <span>Contactless Dining</span>
+              <span>&bull;</span>
+              <span>Multiple Ordering Rounds</span>
             </div>
-            <h1 className="font-serif text-2xl sm:text-3xl font-bold">
-              Ordering for Table {formattedCode}
+            <h1 className="font-serif text-lg sm:text-2xl font-bold mt-0.5">
+              Table {formattedCode} Ordering
             </h1>
-            <p className="text-xs text-zinc-300 mt-0.5">
-              Select dishes, customize options, and place multiple rounds. Settled at counter.
-            </p>
           </div>
 
-          {/* Navigation view switcher: Menu vs Active Orders vs Bill */}
-          <div className="flex items-center gap-1.5 bg-white/10 p-1 rounded-xl backdrop-blur-xs">
+          {/* Navigation Tabs: Menu / My Orders / Running Bill */}
+          <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl backdrop-blur-xs self-start sm:self-auto">
             <button
               onClick={() => setActiveViewTab("menu")}
               className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                 activeViewTab === "menu"
-                  ? "bg-amber-400 text-zinc-950 shadow-xs"
+                  ? "bg-amber-400 text-cafe-950 shadow-xs"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
@@ -471,66 +472,86 @@ export default function TableOrderingPage({ params }: PageProps) {
             </button>
             <button
               onClick={() => setActiveViewTab("orders")}
-              className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                 activeViewTab === "orders"
-                  ? "bg-amber-400 text-zinc-950 shadow-xs"
+                  ? "bg-amber-400 text-cafe-950 shadow-xs"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
               <span>My Orders</span>
               {effectiveOrders.length > 0 && (
-                <span className="rounded-full bg-white/20 px-1.5 text-[10px]">
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                    activeViewTab === "orders"
+                      ? "bg-cafe-950 text-white"
+                      : "bg-white/20 text-white"
+                  }`}
+                >
                   {effectiveOrders.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setActiveViewTab("bill")}
-              className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                 activeViewTab === "bill"
-                  ? "bg-amber-400 text-zinc-950 shadow-xs"
+                  ? "bg-amber-400 text-cafe-950 shadow-xs"
                   : "text-zinc-300 hover:text-white"
               }`}
             >
               <Receipt className="h-3.5 w-3.5" />
               <span>Bill</span>
+              {effectiveBill && effectiveBill.totalAmount > 0 && (
+                <span className="text-[10px] opacity-80">
+                  {formatINR(effectiveBill.totalAmount)}
+                </span>
+              )}
             </button>
           </div>
         </div>
       </section>
 
-      {/* VIEW TAB 1: MENU VIEW */}
+      {/* 5. VIEW TAB 1: MENU VIEW */}
       {activeViewTab === "menu" && (
         <>
-          {/* Filter and Search Bar */}
-          <section className="sticky top-16 z-30 border-b border-cafe-200 bg-[#FAF7F2]/95 backdrop-blur-md py-3 shadow-xs">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-3">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+          {/* Sticky Search & Category Navigation */}
+          <section className="sticky top-14 z-30 border-b border-cafe-200/90 bg-[#FAF7F2]/95 backdrop-blur-md py-2.5 shadow-2xs">
+            <div className="mx-auto max-w-7xl px-3 sm:px-6 space-y-2">
+              <div className="flex items-center gap-2">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-400" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search menu items or flavours..."
-                    className="w-full rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-3 text-xs sm:text-sm focus:border-cafe-600 focus:outline-none focus:ring-1 focus:ring-cafe-600"
+                    placeholder="Search coffee, bowls, pastries..."
+                    className="w-full rounded-xl border border-zinc-200 bg-white py-1.5 pl-8 pr-8 text-xs focus:border-cafe-600 focus:outline-none focus:ring-1 focus:ring-cafe-600 shadow-2xs"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-2 text-zinc-400 hover:text-zinc-600"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                {/* Veg/Dietary Toggle */}
+                <div className="flex items-center gap-1 overflow-x-auto shrink-0">
                   {[
                     { id: "all", label: "All" },
-                    { id: "veg", label: "Pure Veg" },
-                    { id: "vegan", label: "Vegan" },
+                    { id: "veg", label: "Veg" },
                     { id: "non-veg", label: "Non-Veg" },
                   ].map((pill) => (
                     <button
                       key={pill.id}
                       onClick={() => setSelectedVegFilter(pill.id)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                      className={`min-h-[34px] rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
                         selectedVegFilter === pill.id
-                          ? "bg-cafe-900 text-white"
-                          : "bg-white text-zinc-700 border border-zinc-200 hover:bg-cafe-100"
+                          ? "bg-cafe-950 text-white shadow-2xs"
+                          : "bg-white text-zinc-700 border border-zinc-200"
                       }`}
                     >
                       {pill.label}
@@ -539,6 +560,7 @@ export default function TableOrderingPage({ params }: PageProps) {
                 </div>
               </div>
 
+              {/* Horizontal Scrollable Categories */}
               <CategoryFilter
                 categories={DEMO_CATEGORIES}
                 activeCategoryId={activeCategory}
@@ -547,82 +569,88 @@ export default function TableOrderingPage({ params }: PageProps) {
             </div>
           </section>
 
-          {/* Menu Items Grid */}
-          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredItems.map((item) => (
-                <MenuItemCard
-                  key={item.id}
-                  item={item}
-                  isTableMode={true}
-                  onSelect={(i) => setSelectedItem(i)}
-                  onQuickAdd={(i) => {
-                    const defaultChoices: OrderCustomizationChoice[] = [];
-                    i.customizationGroups?.forEach((g) => {
-                      if (g.options.length > 0) {
-                        defaultChoices.push({
-                          groupTitle: g.title,
-                          optionName: g.options[0].name,
-                          priceDelta: g.options[0].priceDelta,
-                        });
-                      }
-                    });
-                    handleAddToCart(i, 1, defaultChoices);
-                  }}
-                />
-              ))}
-            </div>
+          {/* Menu Items Grid: 2 columns on mobile/tablet, 3-4 on desktop */}
+          <main className="mx-auto max-w-7xl px-3 sm:px-6 pt-4 sm:pt-6">
+            {filteredItems.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/70 p-8 text-center text-xs text-zinc-500">
+                No menu items match your search. Try another query or category.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4.5">
+                {filteredItems.map((item) => (
+                  <MenuItemCard
+                    key={item.id}
+                    item={item}
+                    isTableMode={true}
+                    onSelect={(i) => setSelectedItem(i)}
+                    onQuickAdd={(i) => {
+                      const defaultChoices: OrderCustomizationChoice[] = [];
+                      i.customizationGroups?.forEach((g) => {
+                        if (g.options.length > 0) {
+                          defaultChoices.push({
+                            groupTitle: g.title,
+                            optionName: g.options[0].name,
+                            priceDelta: g.options[0].priceDelta,
+                          });
+                        }
+                      });
+                      handleAddToCart(i, 1, defaultChoices);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </main>
         </>
       )}
 
-      {/* VIEW TAB 2: MY ORDERS (LIVE KITCHEN STATUS TRACKER) */}
+      {/* 6. VIEW TAB 2: MY ORDERS (LIVE KITCHEN TRACKER) */}
       {activeViewTab === "orders" && (
-        <main className="mx-auto max-w-3xl px-4 sm:px-6 pt-6 space-y-4">
+        <main className="mx-auto max-w-2xl px-4 sm:px-6 pt-5 space-y-4">
           <div className="flex items-center justify-between border-b pb-3">
             <div>
-              <h2 className="font-serif text-xl font-bold text-zinc-900">
-                Orders for Table {formattedCode}
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-zinc-900">
+                Table {formattedCode} Orders
               </h2>
               <p className="text-xs text-zinc-500">
-                Live preparation updates dispatched directly from our barista &amp; kitchen
+                Live status updates directly from our barista &amp; kitchen
               </p>
             </div>
             <button
               onClick={() => setActiveViewTab("menu")}
-              className="inline-flex items-center gap-1 text-xs font-bold text-cafe-800 hover:underline"
+              className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 hover:text-amber-950"
             >
-              <span>+ Add More Items</span>
+              <span>+ Add Items</span>
             </button>
           </div>
 
           {effectiveOrders.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-zinc-300 bg-white/70 p-12 text-center">
-              <ShoppingBag className="h-10 w-10 text-zinc-300 mx-auto mb-2" />
-              <h3 className="font-serif text-lg font-bold text-zinc-800">
+            <div className="rounded-3xl border border-dashed border-zinc-300 bg-white/70 p-10 text-center space-y-2">
+              <ShoppingBag className="h-10 w-10 text-zinc-300 mx-auto" />
+              <h3 className="font-serif text-base font-bold text-zinc-800">
                 No orders placed yet
               </h3>
-              <p className="text-xs text-zinc-500 mt-1">
-                Browse our digital menu and tap &ldquo;Add to Table Order&rdquo; to send your first ticket.
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                Explore our menu, select items, and submit your table ticket.
               </p>
               <button
                 onClick={() => setActiveViewTab("menu")}
-                className="mt-4 rounded-xl bg-cafe-900 px-5 py-2.5 text-xs font-bold text-white"
+                className="rounded-xl bg-cafe-950 px-4 py-2 text-xs font-bold text-white shadow-xs mt-2"
               >
                 Browse Menu
               </button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               {effectiveOrders.map((ord) => {
                 const stepInfo = getOrderStatusStep(ord.status);
 
                 return (
                   <div
                     key={ord.id}
-                    className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm space-y-4"
+                    className="rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-xs space-y-3"
                   >
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                    <div className="flex items-center justify-between border-b border-zinc-100 pb-2.5">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-sm text-zinc-900">
@@ -632,38 +660,38 @@ export default function TableOrderingPage({ params }: PageProps) {
                             Table {ord.tableCode}
                           </span>
                         </div>
-                        <span className="text-[11px] text-zinc-400">
-                          Placed: {ord.createdAt} &bull; Guest: {ord.customerName}
+                        <span className="text-[10px] text-zinc-400">
+                          {ord.createdAt} &bull; {ord.customerName}
                         </span>
                       </div>
 
                       <div className="text-right">
-                        <span className="font-extrabold text-sm text-zinc-900">
+                        <span className="font-black text-sm text-zinc-900 block">
                           {formatINR(ord.totalAmount)}
                         </span>
-                        <span className={`block text-[11px] font-bold ${stepInfo.color}`}>
+                        <span className={`text-[11px] font-bold ${stepInfo.color}`}>
                           {stepInfo.label}
                         </span>
                       </div>
                     </div>
 
-                    {/* Progress Step Bar */}
-                    <div className="space-y-1.5">
-                      <div className="grid grid-cols-4 gap-1 text-center text-[10px] font-bold">
-                        <span className={stepInfo.step >= 1 ? "text-amber-600" : "text-zinc-400"}>
+                    {/* Sequential Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-4 gap-1 text-center text-[9px] font-bold">
+                        <span className={stepInfo.step >= 1 ? "text-amber-600" : "text-zinc-300"}>
                           1. Received
                         </span>
-                        <span className={stepInfo.step >= 2 ? "text-blue-600" : "text-zinc-400"}>
+                        <span className={stepInfo.step >= 2 ? "text-blue-600" : "text-zinc-300"}>
                           2. Accepted
                         </span>
-                        <span className={stepInfo.step >= 3 ? "text-orange-600" : "text-zinc-400"}>
-                          3. In Kitchen
+                        <span className={stepInfo.step >= 3 ? "text-orange-600" : "text-zinc-300"}>
+                          3. Brewing
                         </span>
-                        <span className={stepInfo.step >= 4 ? "text-emerald-600" : "text-zinc-400"}>
-                          4. Ready / Served
+                        <span className={stepInfo.step >= 4 ? "text-emerald-600" : "text-zinc-300"}>
+                          4. Ready/Served
                         </span>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-zinc-100 overflow-hidden flex">
+                      <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden flex">
                         <div
                           className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-500 transition-all duration-500"
                           style={{
@@ -673,7 +701,7 @@ export default function TableOrderingPage({ params }: PageProps) {
                       </div>
                     </div>
 
-                    {/* Items */}
+                    {/* Items List */}
                     <div className="divide-y divide-zinc-100 text-xs">
                       {ord.items.map((it, idx) => (
                         <div key={idx} className="py-1.5 flex justify-between">
@@ -681,10 +709,10 @@ export default function TableOrderingPage({ params }: PageProps) {
                             <span className="font-bold text-zinc-800">
                               {it.quantity} &times; {it.name}
                             </span>
-                            {it.customizations.map((c, ci) => (
+                            {it.customizations?.map((c, ci) => (
                               <span
                                 key={ci}
-                                className="block text-[10px] text-zinc-500 ml-3"
+                                className="block text-[10px] text-zinc-500 ml-2"
                               >
                                 &bull; {c.optionName}
                               </span>
@@ -696,13 +724,6 @@ export default function TableOrderingPage({ params }: PageProps) {
                         </div>
                       ))}
                     </div>
-
-                    {ord.notes && (
-                      <div className="rounded-xl bg-amber-50/70 p-2.5 text-[11px] text-amber-900 border border-amber-200/60">
-                        <strong>Kitchen Note: </strong>
-                        {ord.notes}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -711,74 +732,51 @@ export default function TableOrderingPage({ params }: PageProps) {
         </main>
       )}
 
-      {/* VIEW TAB 3: CONSOLIDATED SESSION BILL */}
+      {/* 7. VIEW TAB 3: RUNNING TABLE BILL */}
       {activeViewTab === "bill" && (
-        <main className="mx-auto max-w-lg px-4 sm:px-6 pt-6">
+        <main className="mx-auto max-w-lg px-4 sm:px-6 pt-5">
           {effectiveBill && effectiveBill.consolidatedItems.length > 0 ? (
-            <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-lg space-y-6">
-              <div className="text-center border-b border-zinc-100 pb-4">
+            <div className="rounded-3xl border border-zinc-200/90 bg-white p-5 sm:p-6 shadow-sm space-y-5">
+              <div className="text-center border-b border-zinc-100 pb-3.5">
                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">
-                  Dining Session Invoice
+                  Dining Invoice
                 </span>
-                <h3 className="font-serif text-2xl font-bold text-cafe-950 mt-1">
-                  Table {formattedCode} Total Bill
+                <h3 className="font-serif text-xl sm:text-2xl font-bold text-cafe-950 mt-0.5">
+                  Table {formattedCode} Running Bill
                 </h3>
-                <p className="text-xs text-zinc-500">
-                  Orders: {effectiveBill.orderNumbers.join(", ")}
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Rounds: {effectiveBill.orderNumbers.join(", ")}
                 </p>
-                <div className="mt-2 inline-block">
+                <div className="mt-2">
                   {effectiveBill.isPaid ? (
-                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-900 border border-emerald-300">
+                    <span className="rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-black text-emerald-900 border border-emerald-300">
                       PAID AT COUNTER ({effectiveBill.paymentMethod || "Settled"})
                     </span>
                   ) : (
-                    <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-900 border border-amber-300">
+                    <span className="rounded-full bg-amber-100 px-3 py-0.5 text-xs font-black text-amber-900 border border-amber-300">
                       PAYMENT DUE AT COUNTER
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Guest Details */}
-              <div className="rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700 space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Customer:</span>
-                  <span className="font-bold">{effectiveBill.customerName}</span>
-                </div>
-                {effectiveBill.customerPhone && (
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">Phone:</span>
-                    <span>{effectiveBill.customerPhone}</span>
-                  </div>
-                )}
-                {effectiveBill.paymentAudit && (
-                  <div className="flex justify-between text-emerald-800 font-medium">
-                    <span>Receipt Confirmed by:</span>
-                    <span>
-                      {effectiveBill.paymentAudit.cashierName} @{" "}
-                      {effectiveBill.paymentAudit.paidAt}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Itemized list combining all orders */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                  Consolidated Items
-                </h4>
-                <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200">
+              {/* Items Breakdown */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block">
+                  Ordered Items ({effectiveBill.consolidatedItems.length})
+                </span>
+                <div className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 text-xs">
                   {effectiveBill.consolidatedItems.map((item) => (
                     <div
                       key={item.key}
-                      className="flex items-center justify-between p-3 text-xs"
+                      className="flex items-center justify-between p-3"
                     >
                       <div>
                         <span className="font-bold text-zinc-900">
                           {item.quantity} &times; {item.name}
                         </span>
-                        {item.customizations.map((c, i) => (
-                          <div key={i} className="text-[10px] text-zinc-500 ml-3">
+                        {item.customizations?.map((c, i) => (
+                          <div key={i} className="text-[10px] text-zinc-500 ml-2">
                             &bull; {c.optionName}
                           </div>
                         ))}
@@ -791,67 +789,90 @@ export default function TableOrderingPage({ params }: PageProps) {
                 </div>
               </div>
 
-              {/* Calculations */}
-              <div className="rounded-2xl bg-zinc-50 p-4 space-y-2 text-xs text-zinc-600 border border-zinc-200">
+              {/* Tax & Grand Total */}
+              <div className="rounded-2xl bg-zinc-50 p-4 space-y-1.5 text-xs text-zinc-600 border border-zinc-200/80">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span>{formatINR(effectiveBill.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Configured GST ({effectiveBill.taxPercent}%)</span>
+                  <span>GST ({effectiveBill.taxPercent}%)</span>
                   <span>{formatINR(effectiveBill.taxAmount)}</span>
                 </div>
                 <div className="flex justify-between text-base font-black text-zinc-900 pt-2 border-t border-zinc-200">
                   <span>Total Payable</span>
-                  <span className="text-cafe-900">
+                  <span className="text-cafe-950 font-black">
                     {formatINR(effectiveBill.totalAmount)}
                   </span>
                 </div>
               </div>
 
-              {/* Instructions */}
+              {/* How to Settle */}
               {!effectiveBill.isPaid ? (
-                <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900 space-y-1">
+                <div className="rounded-2xl bg-amber-50 border border-amber-200 p-3.5 text-xs text-amber-900 space-y-1">
                   <div className="font-bold flex items-center gap-1.5">
-                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                    <span>How to Pay:</span>
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                    <span>How to settle bill:</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed">
-                    Please visit the café counter and quote <strong>Table {formattedCode}</strong>.
-                    Our cashier will accept UPI QR, Cash, or Card, and mark your bill Paid.
+                  <p className="text-[11px] leading-relaxed text-amber-800">
+                    Visit the counter and mention <strong>Table {formattedCode}</strong>. We accept UPI QR, Cards, and Cash.
                   </p>
                 </div>
               ) : (
-                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center text-xs text-emerald-900 space-y-1">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-600 mx-auto" />
-                  <p className="font-bold">Thank you for dining with us!</p>
-                  <p className="text-[11px] text-emerald-700">
-                    Your visit has been recorded toward your 5-stamp loyalty reward.
-                  </p>
+                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-center text-xs text-emerald-900">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 mx-auto mb-1" />
+                  <p className="font-bold">Bill settled! Thank you for dining with us.</p>
                 </div>
               )}
             </div>
           ) : (
-            <div className="rounded-3xl border border-dashed border-zinc-300 bg-white/70 p-12 text-center">
-              <Receipt className="h-10 w-10 text-zinc-300 mx-auto mb-2" />
-              <h3 className="font-serif text-lg font-bold text-zinc-800">
+            <div className="rounded-3xl border border-dashed border-zinc-300 bg-white/70 p-10 text-center space-y-2">
+              <Receipt className="h-10 w-10 text-zinc-300 mx-auto" />
+              <h3 className="font-serif text-base font-bold text-zinc-800">
                 No active bill for Table {formattedCode}
               </h3>
-              <p className="text-xs text-zinc-500 mt-1">
-                Order some dishes from our digital menu to start a table session.
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                Add items to your table order to start a dining session.
               </p>
-              <button
-                onClick={() => setActiveViewTab("menu")}
-                className="mt-4 rounded-xl bg-cafe-900 px-5 py-2.5 text-xs font-bold text-white"
-              >
-                Browse Menu
-              </button>
             </div>
           )}
         </main>
       )}
 
-      {/* Modals & Drawers */}
+      {/* Floating Bottom Cart Bar (if items in cart and drawer closed) */}
+      {cartItems.length > 0 && !isCartDrawerOpen && (
+        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-md mx-auto">
+          <button
+            onClick={() => setIsCartDrawerOpen(true)}
+            className="w-full flex items-center justify-between rounded-2xl bg-cafe-950 text-white p-3.5 shadow-xl hover:bg-cafe-900 transition active:scale-98 border border-cafe-800"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-400 text-cafe-950 text-xs font-black">
+                {totalCartCount}
+              </span>
+              <span className="text-xs font-bold">View Cart &bull; Round {effectiveOrders.length + 1}</span>
+            </div>
+            <div className="flex items-center gap-1.5 font-black text-amber-300 text-sm">
+              <span>{formatINR(cartItems.reduce((acc, i) => acc + i.totalPrice, 0))}</span>
+              <ArrowRight className="h-4 w-4" />
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Switch Customer Confirmation Dialog (replaces browser confirm) */}
+      <ConfirmDialog
+        isOpen={isSwitchConfirmOpen}
+        title="Switch Guest Profile?"
+        message={`This will revoke the remembered device session for ${customerName || "this table"}. You can sign in with another name or continue as a new visitor.`}
+        confirmLabel="Switch Guest"
+        cancelLabel="Keep Session"
+        variant="warning"
+        onConfirm={confirmSwitchCustomer}
+        onCancel={() => setIsSwitchConfirmOpen(false)}
+      />
+
+      {/* Modals & Bottom Drawers */}
       <ItemDetailModal
         item={selectedItem}
         isOpen={!!selectedItem}

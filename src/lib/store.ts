@@ -50,11 +50,13 @@ function getStoredJson<T>(key: string, fallback: T): T {
   }
 }
 
-function setStoredJson<T>(key: string, value: T): void {
+function setStoredJson<T>(key: string, value: T, silent = false): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new Event("tbw-cafe-store-updated"));
+    if (!silent) {
+      window.dispatchEvent(new Event("tbw-cafe-store-updated"));
+    }
   } catch (err) {
     console.error(`Failed to write ${key} to localStorage`, err);
   }
@@ -125,7 +127,7 @@ export function useCafeStore() {
         .then((data) => {
           if (data && data.success && Array.isArray(data.orders)) {
             setOrders(data.orders);
-            setStoredJson(STORAGE_KEY_ORDERS, data.orders);
+            setStoredJson(STORAGE_KEY_ORDERS, data.orders, true);
 
             const serverUnpaidCodes = new Set(
               data.orders
@@ -151,7 +153,7 @@ export function useCafeStore() {
               return t;
             });
             setTables(serverReconciledTables);
-            setStoredJson(STORAGE_KEY_TABLES, serverReconciledTables);
+            setStoredJson(STORAGE_KEY_TABLES, serverReconciledTables, true);
           }
         })
         .catch(() => {});
@@ -466,16 +468,25 @@ export function useCafeStore() {
   };
 
   // --- KITCHEN STATUS PROGRESSION ---
-  const updateOrderStatus = async (orderId: string, nextStatus: OrderStatus) => {
-    // Notify server
+  const updateOrderStatus = async (
+    orderId: string,
+    nextStatus: OrderStatus,
+    expectedPreviousStatus?: OrderStatus
+  ) => {
+    // 1. Authoritative Server Mutation with State Machine Guard
     try {
-      fetch("/api/orders/status", {
+      const res = await fetch("/api/orders/status", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, nextStatus }),
-      }).catch((err) => console.log("Server API status broadcast:", err));
-    } catch {
-      // Background attempt
+        body: JSON.stringify({ orderId, nextStatus, expectedPreviousStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.warn("Status update rejected by server:", data.error);
+        return { success: false, error: data.error };
+      }
+    } catch (err) {
+      console.warn("Server API status broadcast:", err);
     }
 
     const currentOrders = getStoredJson<CafeOrder[]>(
@@ -495,7 +506,7 @@ export function useCafeStore() {
       }
       return o;
     });
-    setStoredJson(STORAGE_KEY_ORDERS, updatedOrders);
+    setStoredJson(STORAGE_KEY_ORDERS, updatedOrders, true);
 
     if (targetTableCode) {
       const updatedTables = currentTables.map((t) => {
@@ -509,10 +520,11 @@ export function useCafeStore() {
         }
         return t;
       });
-      setStoredJson(STORAGE_KEY_TABLES, updatedTables);
+      setStoredJson(STORAGE_KEY_TABLES, updatedTables, true);
     }
 
     loadAll();
+    return { success: true };
   };
 
   // --- CONSOLIDATED BILL CALCULATION ---

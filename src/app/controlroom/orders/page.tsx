@@ -72,27 +72,30 @@ export default function ControlRoomOrdersPage() {
         subtitle="Active table tickets, order states, itemized customizations, and settlement status"
       />
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-zinc-200 bg-white p-3 shadow-xs">
-        {[
-          { id: "all", label: "All Orders" },
-          { id: "new", label: "New Tickets" },
-          { id: "preparing", label: "In Kitchen" },
-          { id: "ready", label: "Ready to Serve" },
-          { id: "served", label: "Served at Table" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setStatusFilter(tab.id)}
-            className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
-              statusFilter === tab.id
-                ? "bg-zinc-900 text-white shadow-xs"
-                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Filter Tabs & Search */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {[
+            { id: "all", label: "All Orders" },
+            { id: "new", label: "New Tickets" },
+            { id: "accepted", label: "Accepted" },
+            { id: "preparing", label: "In Kitchen" },
+            { id: "ready", label: "Ready to Serve" },
+            { id: "served", label: "Served at Table" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id)}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition whitespace-nowrap ${
+                statusFilter === tab.id
+                  ? "bg-zinc-950 text-white shadow-xs"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Orders Table */}

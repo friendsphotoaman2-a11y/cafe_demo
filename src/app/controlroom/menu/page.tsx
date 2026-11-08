@@ -6,6 +6,7 @@ import ControlRoomHeader from "@/components/controlroom/Header";
 import { DEMO_MENU_ITEMS, DEMO_CATEGORIES } from "@/lib/demo-data";
 import { MenuItem } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 import {
   Plus,
   Search,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 export default function ControlRoomMenuPage() {
+  const { showToast } = useToast();
   const [items, setItems] = useState<MenuItem[]>(DEMO_MENU_ITEMS);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
@@ -193,9 +195,7 @@ export default function ControlRoomMenuPage() {
                   <td className="py-3 px-4 text-right">
                     <button
                       onClick={() =>
-                        alert(
-                          `Simulated edit for "${item.name}". Database update will connect in Phase 2.`
-                        )
+                        showToast(`Editing for "${item.name}" is coming soon.`, "info")
                       }
                       className="p-1.5 text-zinc-400 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 transition"
                       aria-label="Edit item"
@@ -289,7 +289,7 @@ export default function ControlRoomMenuPage() {
               </button>
               <button
                 onClick={() => {
-                  alert("Simulated item addition. Database writes begin in Phase 2.");
+                  showToast("Menu item creation will be saved to Supabase in next update.", "info");
                   setIsAddModalOpen(false);
                 }}
                 className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-bold text-white hover:bg-zinc-800"
