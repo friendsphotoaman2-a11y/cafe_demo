@@ -1,15 +1,17 @@
 import QRCode from "qrcode";
 
+export const CANONICAL_PRODUCTION_BASE_URL = "https://cafe-demo-lovat-sigma.vercel.app";
 export const DEFAULT_LAN_BASE_URL = "http://10.84.23.121:3000";
 export const STORAGE_KEY_QR_BASE = "tbw_cafe_qr_base_url";
 
 /**
  * Resolves the active base URL for QR codes in prioritized order:
  * 1. Explicit override passed by caller / component state
- * 2. Owner-configured custom URL in localStorage (tbw_cafe_qr_base_url)
- * 3. Environment variable (NEXT_PUBLIC_ORDERING_BASE_URL)
- * 4. Active browser origin (if public domain or HTTPS)
- * 5. Default Wi-Fi IP fallback (http://10.84.23.121:3000)
+ * 2. Current browser origin (if on a public domain or HTTPS)
+ * 3. Owner-configured custom URL in localStorage (tbw_cafe_qr_base_url)
+ * 4. Vercel production domain / environment variable
+ * 5. Production fallback (https://cafe-demo-lovat-sigma.vercel.app)
+ * 6. Local development Wi-Fi LAN IP fallback
  */
 export function getBaseOrderingUrl(overrideUrl?: string): string {
   // 1. Explicit override from component state
@@ -17,25 +19,7 @@ export function getBaseOrderingUrl(overrideUrl?: string): string {
     return overrideUrl.trim().replace(/\/+$/, "");
   }
 
-  // 2. Client-side stored owner configuration
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_QR_BASE);
-      if (stored && stored.trim()) {
-        return stored.trim().replace(/\/+$/, "");
-      }
-    } catch {
-      // Ignored
-    }
-  }
-
-  // 3. Environment variable
-  const envUrl = process.env.NEXT_PUBLIC_ORDERING_BASE_URL;
-  if (envUrl && envUrl.trim()) {
-    return envUrl.trim().replace(/\/+$/, "");
-  }
-
-  // 4. Current browser origin (if on a public domain, VPS, or tunnel)
+  // 2. Current browser origin (ensures mobile scanners on production always get canonical domain)
   if (typeof window !== "undefined" && window.location.origin) {
     const origin = window.location.origin;
     if (
@@ -47,7 +31,38 @@ export function getBaseOrderingUrl(overrideUrl?: string): string {
     }
   }
 
-  // 5. Default to the active Wi-Fi LAN IP
+  // 3. Client-side stored owner configuration
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_QR_BASE);
+      if (stored && stored.trim()) {
+        return stored.trim().replace(/\/+$/, "");
+      }
+    } catch {
+      // Ignored
+    }
+  }
+
+  // 4. Vercel environment variables
+  if (process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL}`.replace(/\/+$/, "");
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`.replace(/\/+$/, "");
+  }
+
+  // 5. Explicit environment variable (if not localhost in production)
+  const envUrl = process.env.NEXT_PUBLIC_ORDERING_BASE_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, "");
+  }
+
+  // 6. Production fallback
+  if (process.env.NODE_ENV === "production") {
+    return CANONICAL_PRODUCTION_BASE_URL;
+  }
+
+  // 7. Local development Wi-Fi LAN IP fallback
   return DEFAULT_LAN_BASE_URL;
 }
 

@@ -109,8 +109,8 @@ export default function TableOrderingPage({ params }: PageProps) {
           // 1. Remembered customer device identification (works across ALL tables)
           if (data.rememberedCustomer) {
             setIsRememberedCustomer(true);
-            setCustomerName((prev) => prev || data.rememberedCustomer.fullName);
-            setCustomerPhone((prev) => prev || data.rememberedCustomer.phone);
+            setCustomerName(data.session?.guestName || data.rememberedCustomer.fullName);
+            setCustomerPhone(data.session?.guestPhone || data.rememberedCustomer.phone);
             setCustomerLoyalty({
               stamps: data.rememberedCustomer.stamps || 0,
               totalVisits: data.rememberedCustomer.totalVisits || 0,
@@ -148,8 +148,8 @@ export default function TableOrderingPage({ params }: PageProps) {
     return () => clearInterval(interval);
   }, [fetchSession]);
 
-  const effectiveOrders = remoteOrders && remoteOrders.length > 0 ? remoteOrders : tableOrders;
-  const effectiveBill = remoteSessionBill || sessionBill;
+  const effectiveOrders = remoteOrders !== null ? remoteOrders : tableOrders;
+  const effectiveBill = remoteOrders !== null ? remoteSessionBill : sessionBill;
 
   // Filtered menu
   const filteredItems = useMemo(() => {

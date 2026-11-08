@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { useCafeStore } from "@/lib/store";
-import { CafeOrder } from "@/lib/types";
+import { CafeOrder, OrderStatus } from "@/lib/types";
 import {
   Clock,
   Play,
@@ -12,18 +12,26 @@ import {
   VolumeX,
   User,
   CheckCheck,
+  ChevronDown,
+  ChevronUp,
+  History,
 } from "lucide-react";
 
 export default function ControlRoomKitchenPage() {
-  const { orders, updateOrderStatus } = useCafeStore();
+  const { orders: localOrders, updateOrderStatus } = useCafeStore();
+  const [serverOrders, setServerOrders] = useState<CafeOrder[]>([]);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const prevOrderCount = useRef(orders.length);
+  const [showServedHistory, setShowServedHistory] = useState(false);
+  const prevOrderCount = useRef(0);
 
   // Play synthesized web audio bell on new order arrival
   const playChime = useCallback(() => {
     if (!isAudioEnabled || typeof window === "undefined") return;
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       const osc = ctx.createOscillator();
@@ -46,17 +54,81 @@ export default function ControlRoomKitchenPage() {
     }
   }, [isAudioEnabled]);
 
-  useEffect(() => {
-    if (orders.length > prevOrderCount.current) {
-      playChime();
+  // Authoritative server fetch from Supabase
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orders");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.orders)) {
+          setServerOrders(data.orders);
+          if (
+            prevOrderCount.current > 0 &&
+            data.orders.length > prevOrderCount.current
+          ) {
+            playChime();
+          }
+          prevOrderCount.current = data.orders.length;
+        }
+      }
+    } catch {
+      // Offline fallback: serverOrders remains empty, falls back to localOrders
     }
-    prevOrderCount.current = orders.length;
-  }, [orders.length, playChime]);
+  }, [playChime]);
 
-  const newTickets = orders.filter((o) => o.status === "new");
-  const acceptedTickets = orders.filter((o) => o.status === "accepted");
-  const preparingTickets = orders.filter((o) => o.status === "preparing");
-  const readyTickets = orders.filter((o) => o.status === "ready");
+  useEffect(() => {
+    fetchOrders();
+    const timer = setInterval(fetchOrders, 4000);
+    return () => clearInterval(timer);
+  }, [fetchOrders]);
+
+  // Use authoritative server orders if available, otherwise local store
+  const effectiveOrders = serverOrders.length > 0 ? serverOrders : localOrders;
+
+  // Active tickets: MUST NOT be paid at counter and MUST NOT be completed/served/cancelled
+  const newTickets = effectiveOrders.filter(
+    (o) => o.status === "new" && o.paymentStatus !== "paid_counter"
+  );
+  const acceptedTickets = effectiveOrders.filter(
+    (o) => o.status === "accepted" && o.paymentStatus !== "paid_counter"
+  );
+  const preparingTickets = effectiveOrders.filter(
+    (o) => o.status === "preparing" && o.paymentStatus !== "paid_counter"
+  );
+  const readyTickets = effectiveOrders.filter(
+    (o) => o.status === "ready" && o.paymentStatus !== "paid_counter"
+  );
+
+  // Delivered & Settled Tickets
+  const servedTickets = effectiveOrders.filter(
+    (o) =>
+      o.status === "served" ||
+      o.status === "completed" ||
+      o.paymentStatus === "paid_counter"
+  );
+
+  const handleStatusTransition = async (
+    orderId: string,
+    nextStatus: OrderStatus
+  ) => {
+    // 1. Optimistically update local view
+    setServerOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o))
+    );
+    // 2. Sync client-side store
+    await updateOrderStatus(orderId, nextStatus);
+
+    // 3. Persist canonically in Supabase via API
+    try {
+      await fetch("/api/orders/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, nextStatus }),
+      });
+    } catch (err) {
+      console.warn("Failed to sync order status to server:", err);
+    }
+  };
 
   const renderTicketCard = (ord: CafeOrder) => (
     <div
@@ -108,7 +180,7 @@ export default function ControlRoomKitchenPage() {
                 </span>
               </span>
             </div>
-            {item.customizations.map((c, ci) => (
+            {item.customizations?.map((c, ci) => (
               <span
                 key={ci}
                 className="inline-block text-[10px] text-amber-900 bg-amber-50 rounded px-1.5 py-0.5 mr-1 font-medium border border-amber-200/50"
@@ -132,7 +204,7 @@ export default function ControlRoomKitchenPage() {
       <div className="pt-2 flex items-center justify-end gap-2">
         {ord.status === "new" && (
           <button
-            onClick={() => updateOrderStatus(ord.id, "accepted")}
+            onClick={() => handleStatusTransition(ord.id, "accepted")}
             className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 transition"
           >
             <Check className="h-3.5 w-3.5" />
@@ -142,7 +214,7 @@ export default function ControlRoomKitchenPage() {
 
         {ord.status === "accepted" && (
           <button
-            onClick={() => updateOrderStatus(ord.id, "preparing")}
+            onClick={() => handleStatusTransition(ord.id, "preparing")}
             className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700 transition"
           >
             <Play className="h-3.5 w-3.5 fill-current" />
@@ -152,7 +224,7 @@ export default function ControlRoomKitchenPage() {
 
         {ord.status === "preparing" && (
           <button
-            onClick={() => updateOrderStatus(ord.id, "ready")}
+            onClick={() => handleStatusTransition(ord.id, "ready")}
             className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition"
           >
             <Check className="h-4 w-4" />
@@ -162,7 +234,7 @@ export default function ControlRoomKitchenPage() {
 
         {ord.status === "ready" && (
           <button
-            onClick={() => updateOrderStatus(ord.id, "served")}
+            onClick={() => handleStatusTransition(ord.id, "served")}
             className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-zinc-900 px-3 py-2 text-xs font-bold text-white hover:bg-zinc-800 transition"
           >
             <CheckCheck className="h-4 w-4 text-amber-300" />
@@ -170,9 +242,10 @@ export default function ControlRoomKitchenPage() {
           </button>
         )}
 
-        {ord.status === "served" && (
-          <span className="w-full text-center text-xs font-bold text-zinc-600 bg-zinc-100 py-1.5 rounded-xl">
-            &check; Delivered to Guest
+        {(ord.status === "served" || ord.status === "completed") && (
+          <span className="w-full text-center text-xs font-bold text-zinc-600 bg-zinc-100 py-1.5 rounded-xl flex items-center justify-center gap-1">
+            <CheckCheck className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Delivered to Guest</span>
           </span>
         )}
       </div>
@@ -182,7 +255,7 @@ export default function ControlRoomKitchenPage() {
   return (
     <div className="p-6 space-y-6">
       <ControlRoomHeader
-        title="Kitchen Display &amp; Barista Expediting (KDS)"
+        title="Kitchen Display & Barista Expediting (KDS)"
         subtitle="Live ticket kanban: New → Accepted → Preparing → Ready → Served with customer screen sync"
       />
 
@@ -191,7 +264,7 @@ export default function ControlRoomKitchenPage() {
         <div className="flex items-center gap-3">
           <span className="flex h-3 w-3 rounded-full bg-emerald-500 animate-ping" />
           <span className="text-xs font-bold text-zinc-900">
-            KDS Connected: Real-time table updates active
+            KDS Connected: Real-time Supabase table tickets active
           </span>
         </div>
 
@@ -216,7 +289,7 @@ export default function ControlRoomKitchenPage() {
         </button>
       </div>
 
-      {/* Kanban Board 4 Columns */}
+      {/* Kanban Board 4 Active Columns */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Column 1: New Tickets */}
         <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4 space-y-4">
@@ -317,6 +390,38 @@ export default function ControlRoomKitchenPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Served & Completed Tickets History (Collapsible) */}
+      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs space-y-3">
+        <button
+          onClick={() => setShowServedHistory((prev) => !prev)}
+          className="w-full flex items-center justify-between text-left text-xs font-bold text-zinc-700 hover:text-zinc-900 transition"
+        >
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-zinc-500" />
+            <span>Delivered & Settled History ({servedTickets.length})</span>
+          </div>
+          {showServedHistory ? (
+            <ChevronUp className="h-4 w-4 text-zinc-400" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-zinc-400" />
+          )}
+        </button>
+
+        {showServedHistory && (
+          <div className="pt-2 border-t border-zinc-100">
+            {servedTickets.length === 0 ? (
+              <p className="text-xs text-zinc-400 py-4 text-center">
+                No tickets delivered yet.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {servedTickets.slice(0, 9).map(renderTicketCard)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

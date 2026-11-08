@@ -639,7 +639,7 @@ export function useCafeStore() {
           paymentStatus: "paid_counter" as const,
           paymentMethod: params.paymentMethod,
           paymentAudit: auditRecord,
-          status: o.status === "served" ? ("completed" as const) : o.status,
+          status: "completed" as const,
         };
       }
       return o;

@@ -28,6 +28,8 @@ function LoginForm() {
     { id: "kitchen", title: "Kitchen Chef", desc: "KDS order queue and cooking states only", defaultPin: "4567" },
   ];
 
+  const isProduction = process.env.NODE_ENV === "production";
+
   const handleRoleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -168,7 +170,11 @@ function LoginForm() {
                   type="button"
                   onClick={() => {
                     setSelectedRole(r.id);
-                    setPin(r.defaultPin);
+                    if (!isProduction) {
+                      setPin(r.defaultPin);
+                    } else {
+                      setPin("");
+                    }
                   }}
                   className={`rounded-2xl border p-3 text-left transition ${
                     selectedRole === r.id
@@ -186,12 +192,12 @@ function LoginForm() {
 
             <div>
               <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                Role Access PIN (Pre-filled for fast testing)
+                {isProduction ? "Role Access PIN" : "Role Access PIN (Pre-filled for local test)"}
               </label>
               <input
                 type="password"
                 required
-                value={pin || "••••"}
+                value={pin}
                 onChange={(e) => setPin(e.target.value)}
                 placeholder="Enter Staff PIN"
                 className="w-full rounded-xl border border-zinc-200 py-2.5 px-3 text-xs focus:border-zinc-800 focus:outline-none font-mono"

@@ -11,6 +11,7 @@ import {
   getBaseOrderingUrl,
   getTableOrderingUrl,
   setStoredQrBaseUrl,
+  CANONICAL_PRODUCTION_BASE_URL,
   DEFAULT_LAN_BASE_URL,
 } from "@/lib/qr-generator";
 import {
@@ -40,8 +41,8 @@ export default function ControlRoomTablesPage() {
   const [filterSection, setFilterSection] = useState<string>("all");
 
   // Configurable QR Base URL
-  const [qrBaseUrl, setQrBaseUrl] = useState<string>(DEFAULT_LAN_BASE_URL);
-  const [inputBaseUrl, setInputBaseUrl] = useState<string>(DEFAULT_LAN_BASE_URL);
+  const [qrBaseUrl, setQrBaseUrl] = useState<string>(CANONICAL_PRODUCTION_BASE_URL);
+  const [inputBaseUrl, setInputBaseUrl] = useState<string>(CANONICAL_PRODUCTION_BASE_URL);
   const [urlSavedFeedback, setUrlSavedFeedback] = useState<boolean>(false);
 
   useEffect(() => {

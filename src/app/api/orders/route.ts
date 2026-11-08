@@ -530,10 +530,12 @@ export async function POST(req: NextRequest) {
           req.headers.get("x-customer-device-token");
 
         let customerId: string | null = null;
+        let hasValidDeviceSession = false;
         if (rawDeviceToken) {
           const devCheck = await verifyCustomerDeviceSession(supabase, rawDeviceToken);
           if (devCheck.valid && devCheck.customer) {
             customerId = devCheck.customer.id;
+            hasValidDeviceSession = true;
           }
         }
 
@@ -548,11 +550,14 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (customerRecord) {
+          if (customerId !== customerRecord.id) {
+            hasValidDeviceSession = false;
+          }
           customerId = customerRecord.id;
         }
 
-        // Issue 90-day device token if none exists
-        if (!rawDeviceToken && customerId) {
+        // Issue 90-day device token if none exists or previous was invalid
+        if (!hasValidDeviceSession && customerId) {
           newDeviceTokenToSet = await createAndStoreCustomerDeviceSession(
             supabase,
             customerId

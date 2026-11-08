@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { useCafeStore } from "@/lib/store";
@@ -18,28 +18,86 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+interface DashboardKpis {
+  activeTablesCount: number;
+  totalTablesCount: number;
+  newOrdersCount: number;
+  pendingKitchenCount: number;
+  outstandingBillsCount: number;
+  paidSalesTotal: number;
+  paidOrdersCount: number;
+}
+
+interface DashboardTable {
+  id: string;
+  code: string;
+  name: string;
+  capacity: number;
+  section: string;
+  status: "available" | "occupied" | "order_pending" | "preparing" | "billed";
+  isActive: boolean;
+  currentCustomerName?: string;
+  currentCustomerPhone?: string;
+}
+
 export default function ControlRoomDashboardPage() {
-  const { tables, orders, resetDemoData } = useCafeStore();
+  const { tables: localTables, orders: localOrders, resetDemoData } = useCafeStore();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [dashboardKpis, setDashboardKpis] = useState<DashboardKpis | null>(null);
+  const [serverTables, setServerTables] = useState<DashboardTable[] | null>(null);
 
-  // KPIs
-  const activeTablesCount = tables.filter(
+  // Authoritative server fetch from Supabase
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/controlroom/dashboard");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.kpis) {
+          setDashboardKpis(data.kpis);
+          if (Array.isArray(data.tables)) {
+            setServerTables(data.tables);
+          }
+        }
+      }
+    } catch {
+      // Offline fallback: keep local store calculation
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardStats();
+    const timer = setInterval(fetchDashboardStats, 4000);
+    return () => clearInterval(timer);
+  }, [fetchDashboardStats]);
+
+  // Fallback calculations from local store if server not ready
+  const fallbackActiveTablesCount = localTables.filter(
     (t) => t.status !== "available"
   ).length;
 
-  const newOrdersCount = orders.filter((o) => o.status === "new").length;
+  const fallbackNewOrdersCount = localOrders.filter((o) => o.status === "new").length;
 
-  const pendingKitchenCount = orders.filter(
+  const fallbackPendingKitchenCount = localOrders.filter(
     (o) => o.status === "new" || o.status === "accepted" || o.status === "preparing"
   ).length;
 
-  const outstandingBillsCount = tables.filter((t) =>
-    orders.some((o) => o.tableCode === t.code && o.paymentStatus === "unpaid")
+  const fallbackOutstandingBillsCount = localTables.filter((t) =>
+    localOrders.some((o) => o.tableCode === t.code && o.paymentStatus === "unpaid")
   ).length;
 
-  const paidOrders = orders.filter((o) => o.paymentStatus === "paid_counter");
-  const paidSalesTotal = paidOrders.reduce((acc, o) => acc + o.totalAmount, 0);
+  const paidOrders = localOrders.filter((o) => o.paymentStatus === "paid_counter");
+  const fallbackPaidSalesTotal = paidOrders.reduce((acc, o) => acc + o.totalAmount, 0);
+
+  // Authoritative metrics prioritize server data
+  const activeTablesCount = dashboardKpis !== null ? dashboardKpis.activeTablesCount : fallbackActiveTablesCount;
+  const totalTablesCount = dashboardKpis !== null ? dashboardKpis.totalTablesCount : localTables.length;
+  const outstandingBillsCount = dashboardKpis !== null ? dashboardKpis.outstandingBillsCount : fallbackOutstandingBillsCount;
+  const pendingKitchenCount = dashboardKpis !== null ? dashboardKpis.pendingKitchenCount : fallbackPendingKitchenCount;
+  const newOrdersCount = dashboardKpis !== null ? dashboardKpis.newOrdersCount : fallbackNewOrdersCount;
+  const paidSalesTotal = dashboardKpis !== null ? dashboardKpis.paidSalesTotal : fallbackPaidSalesTotal;
+  const paidCount = dashboardKpis !== null ? dashboardKpis.paidOrdersCount : paidOrders.length;
+  const displayTables = serverTables !== null ? serverTables : localTables;
 
   const handleConfirmReset = () => {
     resetDemoData();
@@ -104,7 +162,7 @@ export default function ControlRoomDashboardPage() {
               {formatINR(paidSalesTotal)}
             </span>
             <span className="block text-[11px] text-emerald-600 font-medium mt-0.5">
-              {paidOrders.length} settled tickets at counter
+              {paidCount} settled tickets at counter
             </span>
           </div>
         </div>
@@ -161,10 +219,10 @@ export default function ControlRoomDashboardPage() {
           </div>
           <div className="mt-3">
             <span className="text-2xl font-black text-zinc-900">
-              {activeTablesCount} / {tables.length}
+              {activeTablesCount} / {totalTablesCount}
             </span>
             <span className="block text-[11px] text-zinc-500 mt-0.5">
-              {tables.length - activeTablesCount} available for walk-ins
+              {totalTablesCount - activeTablesCount} available for walk-ins
             </span>
           </div>
         </div>
@@ -193,7 +251,7 @@ export default function ControlRoomDashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {tables.map((t) => {
+            {displayTables.map((t) => {
               const statusColors = {
                 available: "bg-emerald-50 text-emerald-800 border-emerald-200",
                 occupied: "bg-blue-50 text-blue-800 border-blue-200",
@@ -207,7 +265,7 @@ export default function ControlRoomDashboardPage() {
                   key={t.id}
                   href={`/t/${t.code}`}
                   target="_blank"
-                  className={`group relative rounded-xl border p-3 transition hover:shadow-md ${statusColors[t.status]}`}
+                  className={`group relative rounded-xl border p-3 transition hover:shadow-md ${statusColors[t.status] || statusColors.available}`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-serif font-bold text-sm text-zinc-900">
@@ -248,7 +306,7 @@ export default function ControlRoomDashboardPage() {
           </div>
 
           <div className="divide-y divide-zinc-100 space-y-2 max-h-[380px] overflow-y-auto pr-1">
-            {orders.slice(0, 5).map((ord) => (
+            {localOrders.slice(0, 5).map((ord) => (
               <div key={ord.id} className="pt-2 first:pt-0 space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">

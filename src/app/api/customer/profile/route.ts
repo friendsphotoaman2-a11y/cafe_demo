@@ -111,11 +111,12 @@ export async function GET(req: NextRequest) {
             created_at,
             order_items (
               id,
-              item_name,
+              item_name_snapshot,
               quantity,
-              unit_price,
+              unit_price_snapshot,
               total_price,
-              customization_choices
+              customizations_snapshot,
+              classification
             )
           `)
           .eq("dining_session_id", ds.id)
@@ -151,18 +152,23 @@ export async function GET(req: NextRequest) {
             createdAt: o.created_at,
             items: (o.order_items || []).map((oi: {
               id: string;
-              item_name: string;
+              item_name_snapshot?: string;
+              item_name?: string;
               quantity: number;
-              unit_price: number;
+              unit_price_snapshot?: number;
+              unit_price?: number;
               total_price: number;
-              customization_choices: unknown;
+              customizations_snapshot?: unknown;
+              customization_choices?: unknown;
+              classification?: string;
             }) => ({
               id: oi.id,
-              name: oi.item_name,
+              name: oi.item_name_snapshot || oi.item_name || "Café Item",
               quantity: oi.quantity,
-              unitPrice: Number(oi.unit_price) || 0,
+              unitPrice: Number(oi.unit_price_snapshot ?? oi.unit_price) || 0,
               totalPrice: Number(oi.total_price) || 0,
-              customizations: oi.customization_choices || [],
+              customizations: oi.customizations_snapshot || oi.customization_choices || [],
+              classification: oi.classification || "veg",
             })),
           })),
         };
