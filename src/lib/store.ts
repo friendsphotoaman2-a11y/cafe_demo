@@ -88,8 +88,32 @@ export function useCafeStore() {
       null
     );
 
+    // Clean any zombie table states that have no active unpaid orders
+    const unpaidCodesInLoaded = new Set(
+      loadedOrders
+        .filter(
+          (o) =>
+            o.paymentStatus !== "paid_counter" &&
+            o.status !== "cancelled" &&
+            o.status !== "completed"
+        )
+        .map((o) => o.tableCode)
+    );
+    const cleanedLoadedTables = loadedTables.map((t) => {
+      if (!unpaidCodesInLoaded.has(t.code) && t.status !== "available") {
+        return {
+          ...t,
+          status: "available" as const,
+          currentCustomerName: undefined,
+          currentCustomerPhone: undefined,
+          currentOrderId: undefined,
+        };
+      }
+      return t;
+    });
+
     setOrders(loadedOrders);
-    setTables(loadedTables);
+    setTables(cleanedLoadedTables);
     setCustomers(loadedCustomers);
     setSession(loadedSession);
     setIsLoaded(true);
@@ -102,6 +126,32 @@ export function useCafeStore() {
           if (data && data.success && Array.isArray(data.orders)) {
             setOrders(data.orders);
             setStoredJson(STORAGE_KEY_ORDERS, data.orders);
+
+            const serverUnpaidCodes = new Set(
+              data.orders
+                .filter(
+                  (o: CafeOrder) =>
+                    o.paymentStatus !== "paid_counter" &&
+                    o.status !== "cancelled" &&
+                    o.status !== "completed"
+                )
+                .map((o: CafeOrder) => o.tableCode)
+            );
+
+            const serverReconciledTables = cleanedLoadedTables.map((t) => {
+              if (!serverUnpaidCodes.has(t.code) && t.status !== "available") {
+                return {
+                  ...t,
+                  status: "available" as const,
+                  currentCustomerName: undefined,
+                  currentCustomerPhone: undefined,
+                  currentOrderId: undefined,
+                };
+              }
+              return t;
+            });
+            setTables(serverReconciledTables);
+            setStoredJson(STORAGE_KEY_TABLES, serverReconciledTables);
           }
         })
         .catch(() => {});
