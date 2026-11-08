@@ -63,11 +63,19 @@ function setStoredJson<T>(key: string, value: T, silent = false): void {
 }
 
 export function useCafeStore() {
-  const [orders, setOrders] = useState<CafeOrder[]>([]);
-  const [tables, setTables] = useState<CafeTable[]>([]);
-  const [customers, setCustomers] = useState<CafeCustomer[]>([]);
-  const [session, setSession] = useState<CustomerSession | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [orders, setOrders] = useState<CafeOrder[]>(() =>
+    getStoredJson<CafeOrder[]>(STORAGE_KEY_ORDERS, [])
+  );
+  const [tables, setTables] = useState<CafeTable[]>(() =>
+    getStoredJson<CafeTable[]>(STORAGE_KEY_TABLES, DEMO_TABLES)
+  );
+  const [customers, setCustomers] = useState<CafeCustomer[]>(() =>
+    getStoredJson<CafeCustomer[]>(STORAGE_KEY_CUSTOMERS, [])
+  );
+  const [session, setSession] = useState<CustomerSession | null>(() =>
+    getStoredJson<CustomerSession | null>(STORAGE_KEY_SESSION, null)
+  );
+  const [isLoaded, setIsLoaded] = useState(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);

@@ -75,12 +75,60 @@ export default function TableOrderingPage({ params }: PageProps) {
   const [kitchenNotes, setKitchenNotes] = useState<string>("");
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState<boolean>(false);
 
-  // Customer Onboarding state
-  const [customerName, setCustomerName] = useState<string>(session?.name || "");
-  const [customerPhone, setCustomerPhone] = useState<string>(session?.phone || "");
+  // Customer Onboarding state - initialized IMMEDIATELY from client cache to eliminate "Guest" flash
+  const [customerName, setCustomerName] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("tbw_cafe_customer_session_v4");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.name) return parsed.name;
+        }
+      } catch {}
+    }
+    return session?.name || "";
+  });
+
+  const [customerPhone, setCustomerPhone] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("tbw_cafe_customer_session_v4");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.phone) return parsed.phone;
+        }
+      } catch {}
+    }
+    return session?.phone || "";
+  });
+
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
-  const [isRememberedCustomer, setIsRememberedCustomer] = useState<boolean>(false);
-  const [customerLoyalty, setCustomerLoyalty] = useState<{ stamps: number; totalVisits: number } | null>(null);
+
+  const [isRememberedCustomer, setIsRememberedCustomer] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("tbw_cafe_customer_session_v4");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.name) return true;
+        }
+      } catch {}
+    }
+    return false;
+  });
+
+  const [customerLoyalty, setCustomerLoyalty] = useState<{ stamps: number; totalVisits: number } | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("tbw_cafe_customer_session_v4");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.loyalty) return parsed.loyalty;
+        }
+      } catch {}
+    }
+    return null;
+  });
   const [isSwitchConfirmOpen, setIsSwitchConfirmOpen] = useState(false);
 
   // Review modal state
@@ -114,12 +162,30 @@ export default function TableOrderingPage({ params }: PageProps) {
           // 1. Remembered customer device identification
           if (data.rememberedCustomer) {
             setIsRememberedCustomer(true);
-            setCustomerName(data.session?.guestName || data.rememberedCustomer.fullName);
-            setCustomerPhone(data.session?.guestPhone || data.rememberedCustomer.phone);
-            setCustomerLoyalty({
+            const resolvedName = data.session?.guestName || data.rememberedCustomer.fullName;
+            const resolvedPhone = data.session?.guestPhone || data.rememberedCustomer.phone;
+            const loyaltyStats = {
               stamps: data.rememberedCustomer.stamps || 0,
               totalVisits: data.rememberedCustomer.totalVisits || 0,
-            });
+            };
+
+            setCustomerName(resolvedName);
+            setCustomerPhone(resolvedPhone);
+            setCustomerLoyalty(loyaltyStats);
+
+            // Persist immediately in client cache for 0ms instant display on next scan
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem(
+                  "tbw_cafe_customer_session_v4",
+                  JSON.stringify({
+                    name: resolvedName,
+                    phone: resolvedPhone,
+                    loyalty: loyaltyStats,
+                  })
+                );
+              } catch {}
+            }
           }
           // 2. Active dining session on this specific table
           if (data.session) {
@@ -256,13 +322,21 @@ export default function TableOrderingPage({ params }: PageProps) {
   const handleCustomerSaved = async (name: string, phone: string) => {
     setCustomerName(name);
     setCustomerPhone(phone);
+    setIsRememberedCustomer(true);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(
+          "tbw_cafe_customer_session_v4",
+          JSON.stringify({ name, phone })
+        );
+      } catch {}
+    }
     try {
       await fetch("/api/customer/identity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullName: name, phone }),
       });
-      setIsRememberedCustomer(true);
       showToast(`Welcome to Table ${formattedCode}, ${name}!`);
     } catch (e) {
       console.warn("Device registration:", e);
@@ -276,6 +350,13 @@ export default function TableOrderingPage({ params }: PageProps) {
     try {
       await fetch("/api/customer/identity", { method: "DELETE" });
     } catch {}
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("tbw_cafe_customer_session_v4");
+        localStorage.removeItem("tbw_cached_customer_profile_v2");
+        localStorage.removeItem(`tbw_dining_token_${formattedCode}`);
+      } catch {}
+    }
     setCustomerName("");
     setCustomerPhone("");
     setIsRememberedCustomer(false);

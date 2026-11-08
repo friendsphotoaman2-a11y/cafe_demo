@@ -107,9 +107,28 @@ interface CustomerProfileData {
   }[];
 }
 
+const CACHED_PROFILE_KEY = "tbw_cached_customer_profile_v2";
+
 export default function CustomerProfilePage() {
-  const [data, setData] = useState<CustomerProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<CustomerProfileData | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(CACHED_PROFILE_KEY);
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        if (localStorage.getItem(CACHED_PROFILE_KEY)) return false;
+      } catch {}
+    }
+    return true;
+  });
+
   const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
@@ -119,25 +138,39 @@ export default function CustomerProfilePage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmittingLogin, setIsSubmittingLogin] = useState(false);
 
-  const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial && !data) {
+        setLoading(true);
+      }
       const res = await fetch("/api/customer/profile");
       if (res.ok) {
         const json = await res.json();
         setData(json);
+        if (json.authenticated && typeof window !== "undefined") {
+          try {
+            localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(json));
+          } catch {}
+        }
       } else {
         setData({ authenticated: false });
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem(CACHED_PROFILE_KEY);
+          } catch {}
+        }
       }
     } catch {
-      setData({ authenticated: false });
+      if (!data) {
+        setData({ authenticated: false });
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [data]);
 
   useEffect(() => {
-    fetchProfile();
+    fetchProfile(true);
   }, [fetchProfile]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -162,6 +195,15 @@ export default function CustomerProfilePage() {
       });
       const json = await res.json();
       if (res.ok && json.authenticated) {
+        // Also save to device customer session for instant table QR pickup
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(
+              "tbw_cafe_customer_session_v4",
+              JSON.stringify({ name: loginName.trim(), phone: cleanPhone })
+            );
+          } catch {}
+        }
         await fetchProfile();
       } else {
         setLoginError(json.error || "Unable to start session.");
@@ -178,6 +220,12 @@ export default function CustomerProfilePage() {
       await fetch("/api/customer/identity", { method: "DELETE" });
       setData({ authenticated: false });
       setIsLogoutConfirmOpen(false);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(CACHED_PROFILE_KEY);
+          localStorage.removeItem("tbw_cafe_customer_session_v4");
+        } catch {}
+      }
     } catch {
       // ignore
     }
