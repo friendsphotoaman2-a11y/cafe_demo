@@ -772,6 +772,58 @@ export function useCafeStore() {
     return { success: true };
   };
 
+  const deleteOrder = async (
+    orderId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // 1. Authoritative server delete from Supabase
+      const res = await fetch(`/api/orders?orderId=${encodeURIComponent(orderId)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || "Failed to delete order." };
+      }
+
+      // 2. Remove order from local client store
+      const currentOrders = getStoredJson<CafeOrder[]>(STORAGE_KEY_ORDERS, []);
+      const target = currentOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
+      const updatedOrders = currentOrders.filter(
+        (o) => o.id !== orderId && o.orderNumber !== orderId
+      );
+      setStoredJson(STORAGE_KEY_ORDERS, updatedOrders);
+      setOrders(updatedOrders);
+
+      // 3. If target table has no other active unpaid orders, reset table to available
+      if (target) {
+        const remainingForTable = updatedOrders.filter(
+          (o) => o.tableCode === target.tableCode && o.paymentStatus === "unpaid"
+        );
+        if (remainingForTable.length === 0) {
+          const currentTables = getStoredJson<CafeTable[]>(STORAGE_KEY_TABLES, DEMO_TABLES);
+          const updatedTables = currentTables.map((t) =>
+            t.code === target.tableCode
+              ? {
+                  ...t,
+                  status: "available" as const,
+                  currentCustomerName: undefined,
+                  currentCustomerPhone: undefined,
+                }
+              : t
+          );
+          setStoredJson(STORAGE_KEY_TABLES, updatedTables);
+          setTables(updatedTables);
+        }
+      }
+
+      loadAll();
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Network error";
+      return { success: false, error: msg };
+    }
+  };
+
   const resetDemoData = () => {
     setStoredJson(STORAGE_KEY_ORDERS, []);
     setStoredJson(STORAGE_KEY_TABLES, DEMO_TABLES);
@@ -795,6 +847,7 @@ export function useCafeStore() {
     getTableSessionBill,
     settleTableBill,
     voidPaymentCorrection,
+    deleteOrder,
     resetDemoData,
   };
 }

@@ -16,6 +16,9 @@ import {
   Search,
   RotateCcw,
   ShieldAlert,
+  Trash2,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 
 export default function ControlRoomCashierPage() {
@@ -25,6 +28,7 @@ export default function ControlRoomCashierPage() {
     getTableSessionBill,
     settleTableBill,
     voidPaymentCorrection,
+    deleteOrder,
   } = useCafeStore();
 
   const [selectedTableCode, setSelectedTableCode] = useState<string>("01");
@@ -35,6 +39,8 @@ export default function ControlRoomCashierPage() {
   const [notification, setNotification] = useState<string | null>(null);
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
   const [voidReason, setVoidReason] = useState("");
+  const [orderNumToDelete, setOrderNumToDelete] = useState<string | null>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
 
   // Get active tables with unpaid orders
   const activeUnpaidTables = tables.filter((t) => {
@@ -92,6 +98,23 @@ export default function ControlRoomCashierPage() {
       `Payment voided/corrected for Table ${selectedBill.tableCode}. Reason recorded: "${voidReason.trim()}".`
     );
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleConfirmDeleteOrder = async () => {
+    if (!orderNumToDelete) return;
+    setIsDeletingOrder(true);
+
+    const res = await deleteOrder(orderNumToDelete);
+    setIsDeletingOrder(false);
+
+    if (res.success) {
+      setNotification(`Order #${orderNumToDelete} was deleted from the database.`);
+      setOrderNumToDelete(null);
+      setTimeout(() => setNotification(null), 5000);
+    } else {
+      setNotification(`Failed to delete order: ${res.error || "Unknown error"}`);
+      setTimeout(() => setNotification(null), 6000);
+    }
   };
 
   return (
@@ -213,13 +236,30 @@ export default function ControlRoomCashierPage() {
               {/* Invoice Header */}
               <div className="flex items-start justify-between border-b border-zinc-100 pb-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
                       Consolidated Table Invoice
                     </span>
-                    <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                      Orders: {selectedBill.orderNumbers.join(", ")}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {selectedBill.orderNumbers.map((num) => (
+                        <span
+                          key={num}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-100/90 px-2 py-0.5 text-[10px] font-bold text-amber-950 border border-amber-300"
+                        >
+                          <span>#{num}</span>
+                          {!selectedBill.isPaid && (
+                            <button
+                              type="button"
+                              onClick={() => setOrderNumToDelete(num)}
+                              className="text-amber-800 hover:text-red-600 transition ml-0.5 p-0.5"
+                              title={`Delete mistake order #${num} from DB`}
+                            >
+                              <Trash2 className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                   <h3 className="font-serif text-2xl font-bold text-zinc-900 mt-1">
                     Table {selectedBill.tableCode} Bill
@@ -479,6 +519,66 @@ export default function ControlRoomCashierPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Order Confirmation Modal */}
+      {orderNumToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-red-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 shrink-0">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-serif text-lg font-bold text-zinc-900 leading-tight">
+                  Delete Order #{orderNumToDelete}?
+                </h3>
+                <span className="text-xs text-zinc-500 font-medium">
+                  Table {selectedTableCode} Accidental Order
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-red-100 bg-red-50/70 p-3.5 text-xs text-red-900 space-y-1.5">
+              <div className="flex items-center gap-2 font-bold text-red-950">
+                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                <span>Permanent Database Removal</span>
+              </div>
+              <p className="leading-relaxed">
+                This order was placed by mistake. It will be <strong>permanently deleted from Supabase cloud database</strong> and removed from Table {selectedTableCode}&apos;s bill.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setOrderNumToDelete(null)}
+                disabled={isDeletingOrder}
+                className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteOrder}
+                disabled={isDeletingOrder}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-5 py-2 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                {isDeletingOrder ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete from DB</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

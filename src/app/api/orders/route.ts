@@ -789,3 +789,124 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+// =========================================================================
+// DELETE: Void / Delete an Order (for Mistake Orders) from DB & Supabase
+// =========================================================================
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const orderId = searchParams.get("orderId");
+
+    if (!orderId) {
+      return NextResponse.json(
+        { error: "orderId is required." },
+        { status: 400 }
+      );
+    }
+
+    // 1. Authorize: Staff Role required (Owner, Manager, Cashier, Kitchen)
+    const staffCheck = await requireStaffRole(req, [
+      "owner",
+      "manager",
+      "cashier",
+      "kitchen",
+    ]);
+
+    if (!staffCheck.authorized) {
+      return NextResponse.json(
+        { error: "Unauthorized. Staff authorization required to delete an order." },
+        { status: 403 }
+      );
+    }
+
+    const supabase = createAdminClient();
+
+    // 2. Locate the order in Supabase by UUID or order_number
+    let { data: orderRecord } = await supabase
+      .from("orders")
+      .select("id, order_number, table_id, dining_session_id, total_amount, restaurant_tables ( code )")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (!orderRecord) {
+      // Try searching by order_number (e.g. "TBW-1234" or "#TBW-1234")
+      const cleanNumber = orderId.replace(/^#/, "");
+      const res = await supabase
+        .from("orders")
+        .select("id, order_number, table_id, dining_session_id, total_amount, restaurant_tables ( code )")
+        .eq("order_number", cleanNumber)
+        .maybeSingle();
+      orderRecord = res.data;
+    }
+
+    if (!orderRecord) {
+      // Order might already be deleted or not in remote DB
+      return NextResponse.json({
+        success: true,
+        message: "Order record removed.",
+        deletedOrderId: orderId,
+      });
+    }
+
+    const tableId = orderRecord.table_id;
+    const diningSessionId = orderRecord.dining_session_id;
+
+    // 3. Delete order items first (explicitly to ensure no foreign key issues)
+    await supabase.from("order_items").delete().eq("order_id", orderRecord.id);
+
+    // 4. Delete the order record itself
+    const { error: deleteErr } = await supabase
+      .from("orders")
+      .delete()
+      .eq("id", orderRecord.id);
+
+    if (deleteErr) {
+      return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+    }
+
+    // 5. Check if any remaining active (unpaid) orders exist on this table
+    if (tableId) {
+      const { data: remainingOrders } = await supabase
+        .from("orders")
+        .select("id, status, payment_status")
+        .eq("table_id", tableId)
+        .neq("payment_status", "paid_counter");
+
+      if (!remainingOrders || remainingOrders.length === 0) {
+        // No remaining active orders on this table!
+        // Reset table status to 'available'
+        await supabase
+          .from("restaurant_tables")
+          .update({ status: "available" })
+          .eq("id", tableId);
+
+        // Complete/close the dining session if exists
+        if (diningSessionId) {
+          await supabase
+            .from("dining_sessions")
+            .update({ status: "completed" })
+            .eq("id", diningSessionId);
+        }
+      } else {
+        // If remaining orders exist, check if any is 'preparing'
+        const hasPreparing = remainingOrders.some((o) => o.status === "preparing");
+        const nextTableStatus = hasPreparing ? "preparing" : "occupied";
+        await supabase
+          .from("restaurant_tables")
+          .update({ status: nextTableStatus })
+          .eq("id", tableId);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Order #${orderRecord.order_number} was permanently deleted from the database.`,
+      deletedOrderId: orderRecord.id,
+      orderNumber: orderRecord.order_number,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal Server Error";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

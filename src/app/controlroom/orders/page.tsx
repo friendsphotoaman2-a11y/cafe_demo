@@ -6,17 +6,46 @@ import { useCafeStore } from "@/lib/store";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 import { CafeOrder, OrderStatus } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
-import { Eye, X } from "lucide-react";
+import { Eye, X, Trash2, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
 export default function ControlRoomOrdersPage() {
-  const { orders } = useCafeStore();
+  const { orders, deleteOrder } = useCafeStore();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<CafeOrder | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<CafeOrder | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [actionBanner, setActionBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const filteredOrders = orders.filter((o) => {
     if (statusFilter !== "all" && o.status !== statusFilter) return false;
     return true;
   });
+
+  const handleDeleteConfirmed = async () => {
+    if (!orderToDelete) return;
+    setIsDeleting(true);
+    setActionBanner(null);
+
+    const res = await deleteOrder(orderToDelete.id);
+    setIsDeleting(false);
+
+    if (res.success) {
+      setActionBanner({
+        type: "success",
+        message: `Order #${orderToDelete.orderNumber} (Table ${orderToDelete.tableCode}) was permanently deleted from the database and floor queue.`,
+      });
+      setOrderToDelete(null);
+      if (selectedOrder?.id === orderToDelete.id) {
+        setSelectedOrder(null);
+      }
+      setTimeout(() => setActionBanner(null), 6000);
+    } else {
+      setActionBanner({
+        type: "error",
+        message: res.error || "Failed to delete order from database.",
+      });
+    }
+  };
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -71,6 +100,32 @@ export default function ControlRoomOrdersPage() {
         title="Live Orders Hub"
         subtitle="Active table tickets, order states, itemized customizations, and settlement status"
       />
+
+      {/* Action Notification Banner */}
+      {actionBanner && (
+        <div
+          className={`flex items-center justify-between rounded-2xl p-4 text-xs font-semibold shadow-xs animate-fade-in ${
+            actionBanner.type === "success"
+              ? "bg-emerald-50 text-emerald-900 border border-emerald-300"
+              : "bg-red-50 text-red-900 border border-red-300"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {actionBanner.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+            )}
+            <span>{actionBanner.message}</span>
+          </div>
+          <button
+            onClick={() => setActionBanner(null)}
+            className="text-zinc-400 hover:text-zinc-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xs">
@@ -182,13 +237,25 @@ export default function ControlRoomOrdersPage() {
 
                   {/* Actions */}
                   <td className="py-3.5 px-4 text-right">
-                    <button
-                      onClick={() => setSelectedOrder(ord)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition"
-                    >
-                      <Eye className="h-3.5 w-3.5 text-zinc-400" />
-                      <span>Inspect</span>
-                    </button>
+                    <div className="inline-flex items-center gap-1.5 justify-end">
+                      <button
+                        onClick={() => setSelectedOrder(ord)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition"
+                        title="View ticket details"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-zinc-400" />
+                        <span>Inspect</span>
+                      </button>
+
+                      <button
+                        onClick={() => setOrderToDelete(ord)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50/50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 transition active:scale-95"
+                        title="Permanently delete mistake order"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )))}
@@ -282,12 +349,99 @@ export default function ControlRoomOrdersPage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-100">
+              <button
+                onClick={() => {
+                  const ord = selectedOrder;
+                  setSelectedOrder(null);
+                  setOrderToDelete(ord);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition active:scale-95"
+              >
+                <Trash2 className="h-4 w-4 text-red-600" />
+                <span>Delete Order from DB</span>
+              </button>
+
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="rounded-xl bg-zinc-900 px-5 py-2 text-xs font-bold text-white hover:bg-zinc-800"
+                className="rounded-xl bg-zinc-900 px-5 py-2 text-xs font-bold text-white hover:bg-zinc-800 transition"
               >
                 Close Ticket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Permanent Delete Modal */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-red-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 shrink-0">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-serif text-lg font-bold text-zinc-900 leading-tight">
+                  Delete Order #{orderToDelete.orderNumber}?
+                </h3>
+                <span className="text-xs text-zinc-500 font-medium">
+                  Table {orderToDelete.tableCode} &bull; {orderToDelete.customerName}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-red-100 bg-red-50/70 p-3.5 text-xs text-red-900 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-red-950">
+                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                <span>Permanent Database &amp; Floor Removal</span>
+              </div>
+              <p className="leading-relaxed">
+                This order was placed by mistake. It will be <strong>permanently deleted from Supabase cloud database</strong>, kitchen ticket queue, and counter billing.
+              </p>
+              <p className="text-[11px] text-red-800/80">
+                &bull; Table {orderToDelete.tableCode} status will automatically revert to Available if no other active orders remain.
+              </p>
+            </div>
+
+            {/* Quick summary */}
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 space-y-1">
+              <div className="flex justify-between font-bold text-zinc-900">
+                <span>Items to Remove:</span>
+                <span>{orderToDelete.items.length} item(s)</span>
+              </div>
+              <div className="flex justify-between font-bold text-zinc-900">
+                <span>Total Amount:</span>
+                <span>{formatINR(orderToDelete.totalAmount)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                disabled={isDeleting}
+                className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirmed}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-5 py-2 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    <span>Confirm Delete from DB</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
