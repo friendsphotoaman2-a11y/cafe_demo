@@ -3,7 +3,12 @@ import Image from "next/image";
 import Link from "next/link";
 import Navbar from "@/components/public/Navbar";
 import Footer from "@/components/public/Footer";
-import { Heart, Award, Sparkles, ArrowRight } from "lucide-react";
+import {
+  Heart,
+  Award,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 
 export default function AboutPage() {
@@ -12,31 +17,32 @@ export default function AboutPage() {
       <Navbar />
 
       <main className="flex-1">
-        {/* Hero Banner */}
-        <section className="relative overflow-hidden bg-cafe-950 text-white py-20 sm:py-28">
+        {/* Luxury Hero Banner */}
+        <section className="relative overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-amber-950 text-white py-20 sm:py-32">
           <div className="absolute inset-0 z-0 opacity-25">
             <Image
               src="https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=1920&q=80"
               alt="Coffee beans roaster"
               fill
+              priority
               className="object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-cafe-950 via-cafe-950/70 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent" />
           </div>
 
-          <div className="relative z-10 mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-3.5 py-1 text-xs font-semibold text-amber-300 backdrop-blur-md mb-4">
+          <div className="relative z-10 mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8 space-y-5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-1.5 text-xs font-bold text-amber-300 backdrop-blur-md shadow-xs">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Our Roots &amp; Craft Philosophy</span>
+              <span>Our Roots &amp; Roasting Philosophy</span>
             </span>
 
-            <h1 className="font-serif text-4xl sm:text-6xl font-bold tracking-tight text-white">
+            <h1 className="font-serif text-4xl sm:text-6xl font-black tracking-tight text-white leading-[1.15]">
               Rooted in Bean Sourcing. Dedicated to the Perfect Cup.
             </h1>
 
-            <p className="mt-4 text-base sm:text-lg text-zinc-300 leading-relaxed font-light">
+            <p className="mt-4 text-sm sm:text-lg text-zinc-300 leading-relaxed font-light max-w-2xl mx-auto">
               At {DEMO_SETTINGS.brandName}, coffee is neither an afterthought nor a rush. It is a slow,
-              reverent art that unites heritage Indian estates with contemporary extraction techniques.
+              reverent art uniting heritage Western Ghats estates with contemporary extraction techniques.
             </p>
           </div>
         </section>
@@ -46,43 +52,45 @@ export default function AboutPage() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div className="space-y-6">
-                <span className="text-xs font-bold uppercase tracking-wider text-cafe-600">
-                  Where Coffee Originates
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                  Origin &amp; Terroir
                 </span>
-                <h2 className="font-serif text-3xl sm:text-4xl font-bold text-cafe-950">
+                <h2 className="font-serif text-3xl sm:text-4xl font-black text-zinc-950 leading-tight">
                   High-Altitude Chikmagalur &amp; Coorg Shade-Grown Arabica
                 </h2>
-                <p className="text-sm sm:text-base text-zinc-700 leading-relaxed">
+                <p className="text-xs sm:text-base text-zinc-700 leading-relaxed font-light">
                   Every batch of beans roasted at {DEMO_SETTINGS.brandName} is sourced from regenerative,
                   shade-grown family estates nestled at 3,800 to 4,500 feet elevation in the Western Ghats of Karnataka.
                 </p>
-                <p className="text-sm sm:text-base text-zinc-700 leading-relaxed">
-                  Intercropped beneath canopy trees among wild cardamom, black pepper vines, and orange blossoms,
-                  our cherries mature slowly. This extended ripening period imparts deep natural sweetness, velvety body,
-                  and bright fruit nuances to each bean.
+                <p className="text-xs sm:text-base text-zinc-700 leading-relaxed font-light">
+                  Intercropped beneath native jungle canopy among wild cardamom and black pepper vines,
+                  our cherries mature slowly. This extended ripening period imparts deep natural sweetness, velvety chocolate body,
+                  and bright citrus nuances.
                 </p>
 
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-cafe-200">
-                  <div className="rounded-xl bg-white p-4 border border-cafe-200 shadow-xs">
-                    <span className="font-serif text-2xl font-bold text-cafe-900 block">
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-200">
+                  <div className="rounded-2xl bg-white p-5 border border-zinc-200 shadow-xs">
+                    <span className="font-serif text-3xl font-black text-amber-900 block">
                       100%
                     </span>
-                    <span className="text-xs text-zinc-600">
+                    <span className="text-xs font-bold text-zinc-700">
                       Single-Origin Estate Arabica
                     </span>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">Direct trade with certified estates</p>
                   </div>
-                  <div className="rounded-xl bg-white p-4 border border-cafe-200 shadow-xs">
-                    <span className="font-serif text-2xl font-bold text-cafe-900 block">
+                  <div className="rounded-2xl bg-white p-5 border border-zinc-200 shadow-xs">
+                    <span className="font-serif text-3xl font-black text-amber-900 block">
                       36-Hr
                     </span>
-                    <span className="text-xs text-zinc-600">
-                      Natural Sourdough Fermentation
+                    <span className="text-xs font-bold text-zinc-700">
+                      Wild Sourdough Ferment
                     </span>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">Slow cold-proofed bread daily</p>
                   </div>
                 </div>
               </div>
 
-              <div className="relative h-96 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-cafe-200">
+              <div className="relative h-80 sm:h-96 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-zinc-200">
                 <Image
                   src="https://images.unsplash.com/photo-1498804103079-a6351b050096?auto=format&fit=crop&w=1000&q=80"
                   alt="Barista brewing pour over coffee"
@@ -95,10 +103,10 @@ export default function AboutPage() {
         </section>
 
         {/* Scratch Kitchen Story */}
-        <section className="py-16 bg-cafe-100/50 border-y border-cafe-200/80">
+        <section className="py-16 sm:py-24 bg-white/70 border-y border-amber-900/10">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-              <div className="order-2 lg:order-1 relative h-96 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-cafe-200">
+              <div className="order-2 lg:order-1 relative h-80 sm:h-96 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-zinc-200">
                 <Image
                   src="https://images.unsplash.com/photo-1509722747041-616f39b57569?auto=format&fit=crop&w=1000&q=80"
                   alt="Artisan Sourdough and Fresh Ingredients"
@@ -108,23 +116,23 @@ export default function AboutPage() {
               </div>
 
               <div className="order-1 lg:order-2 space-y-6">
-                <span className="text-xs font-bold uppercase tracking-wider text-cafe-600">
-                  From Scratch Kitchen
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                  Scratch Kitchen Philosophy
                 </span>
-                <h2 className="font-serif text-3xl sm:text-4xl font-bold text-cafe-950">
-                  Honest Ingredients. No Pre-made Bases.
+                <h2 className="font-serif text-3xl sm:text-4xl font-black text-zinc-950 leading-tight">
+                  Honest Ingredients. No Pre-Made Bases.
                 </h2>
-                <p className="text-sm sm:text-base text-zinc-700 leading-relaxed">
-                  We believe food in a coffee shop should match the care of the coffee. Our bread is wild-yeast sourdough baked daily with natural starters. Our pestos are made in small mortars with sweet basil and pine nuts.
+                <p className="text-xs sm:text-base text-zinc-700 leading-relaxed font-light">
+                  We believe food in a specialty roastery should match the integrity of our coffee. Our bread is wild-yeast sourdough baked daily with natural starters. Our pestos are pounded in small batches with sweet basil and pine nuts.
                 </p>
-                <p className="text-sm sm:text-base text-zinc-700 leading-relaxed">
-                  Whether you order our Wild Truffle Mushroom Panini or our Blueberry Basque Cheesecake, everything is prepped by human hands in our Indiranagar kitchen.
+                <p className="text-xs sm:text-base text-zinc-700 leading-relaxed font-light">
+                  From our Wild Truffle Mushroom Panini to our Basque Cheesecake with fresh berry compote, every order is prepared fresh by hand in our Indiranagar kitchen.
                 </p>
 
                 <div className="pt-2">
                   <Link
                     href="/menu"
-                    className="inline-flex items-center gap-2 rounded-full bg-cafe-900 px-6 py-3 text-sm font-bold text-white hover:bg-cafe-800 transition"
+                    className="inline-flex items-center gap-2 rounded-full bg-zinc-950 px-6 py-3.5 text-xs font-bold text-white hover:bg-zinc-800 shadow-md transition active:scale-95"
                   >
                     <span>Browse Our Kitchen Menu</span>
                     <ArrowRight className="h-4 w-4" />
@@ -135,47 +143,52 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Ethical Values */}
+        {/* Core Values Bento Grid */}
         <section className="py-16 sm:py-24">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="font-serif text-3xl font-bold text-cafe-950 mb-12">
-              Our Core Commitments
-            </h2>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center max-w-2xl mx-auto mb-12">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                Guiding Principles
+              </span>
+              <h2 className="font-serif text-3xl sm:text-4xl font-black text-zinc-950 mt-1">
+                Our Core Commitments
+              </h2>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
-              <div className="rounded-2xl border border-cafe-200 bg-white p-6 shadow-xs">
-                <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-4">
-                  <Award className="h-5 w-5" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="rounded-3xl border border-zinc-200 bg-white p-7 shadow-xs space-y-3 hover:border-amber-400 transition">
+                <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
+                  <Award className="h-6 w-6" />
                 </div>
-                <h3 className="font-serif text-lg font-bold text-cafe-950 mb-2">
+                <h3 className="font-serif text-lg font-bold text-zinc-950">
                   Direct Farmer Premiums
                 </h3>
-                <p className="text-xs text-zinc-600 leading-relaxed">
-                  We pay 40% above fair-trade floor prices directly to our coffee farm partners in Karnataka, fostering long-term soil sustainability.
+                <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed font-light">
+                  We pay 40% above fair-trade floor prices directly to our estate partners in Chikmagalur, fostering sustainable soil stewardship and community prosperity.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-cafe-200 bg-white p-6 shadow-xs">
-                <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-4">
-                  <Heart className="h-5 w-5" />
+              <div className="rounded-3xl border border-zinc-200 bg-white p-7 shadow-xs space-y-3 hover:border-amber-400 transition">
+                <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
+                  <Heart className="h-6 w-6" />
                 </div>
-                <h3 className="font-serif text-lg font-bold text-cafe-950 mb-2">
+                <h3 className="font-serif text-lg font-bold text-zinc-950">
                   Eco-Conscious Packaging
                 </h3>
-                <p className="text-xs text-zinc-600 leading-relaxed">
-                  100% compostable sugarcane takeaway containers, plant-based cups, and zero single-use plastic straws or lids.
+                <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed font-light">
+                  100% compostable sugarcane takeaway boxes, plant-based cups, and zero single-use plastic straws or lids across all customer packaging.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-cafe-200 bg-white p-6 shadow-xs">
-                <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-4">
-                  <Sparkles className="h-5 w-5" />
+              <div className="rounded-3xl border border-zinc-200 bg-white p-7 shadow-xs space-y-3 hover:border-amber-400 transition">
+                <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
+                  <Sparkles className="h-6 w-6" />
                 </div>
-                <h3 className="font-serif text-lg font-bold text-cafe-950 mb-2">
-                  Transparent Ingredients
+                <h3 className="font-serif text-lg font-bold text-zinc-950">
+                  Full Ingredient Transparency
                 </h3>
-                <p className="text-xs text-zinc-600 leading-relaxed">
-                  Every allergen, ingredient, and calorie profile is openly documented on our digital table ordering screens.
+                <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed font-light">
+                  Every allergen, ingredient, and spice parameter is openly documented on our table QR ordering screens so you always dine with peace of mind.
                 </p>
               </div>
             </div>
@@ -187,4 +200,3 @@ export default function AboutPage() {
     </div>
   );
 }
-
