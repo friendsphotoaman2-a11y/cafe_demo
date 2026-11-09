@@ -17,6 +17,7 @@ import {
   DEMO_SETTINGS,
 } from "./demo-data";
 import { createClient } from "@/lib/supabase/client";
+import { apiUrl } from "@/lib/base-path";
 
 const STORAGE_KEY_ORDERS = "tbw_cafe_orders_v4";
 const STORAGE_KEY_TABLES = "tbw_cafe_tables_v4";
@@ -130,7 +131,7 @@ export function useCafeStore() {
 
     // If staff session active, cross-sync latest orders directly from server/Supabase
     if (typeof window !== "undefined") {
-      fetch("/api/orders")
+      fetch(apiUrl("/api/orders"))
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (data && data.success && Array.isArray(data.orders)) {
@@ -330,7 +331,7 @@ export function useCafeStore() {
     let activeToken: string | undefined = storedDiningToken || undefined;
 
     // 1. Call server API route for authoritative processing
-    const res = await fetch("/api/orders", {
+    const res = await fetch(apiUrl("/api/orders"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -483,7 +484,7 @@ export function useCafeStore() {
   ) => {
     // 1. Authoritative Server Mutation with State Machine Guard
     try {
-      const res = await fetch("/api/orders/status", {
+      const res = await fetch(apiUrl("/api/orders/status"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, nextStatus, expectedPreviousStatus }),
@@ -642,7 +643,7 @@ export function useCafeStore() {
 
     // Authoritative Server Settlement Call
     try {
-      const res = await fetch("/api/cashier/settle", {
+      const res = await fetch(apiUrl("/api/cashier/settle"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -785,7 +786,7 @@ export function useCafeStore() {
   ): Promise<{ success: boolean; error?: string }> => {
     try {
       // 1. Authoritative server delete from Supabase
-      const res = await fetch(`/api/orders?orderId=${encodeURIComponent(orderId)}`, {
+      const res = await fetch(apiUrl(`/api/orders?orderId=${encodeURIComponent(orderId)}`), {
         method: "DELETE",
       });
       const data = await res.json();

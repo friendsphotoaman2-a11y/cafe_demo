@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { formatINR } from "@/lib/utils";
+import { apiUrl } from "@/lib/base-path";
 import {
   Search,
   Gift,
@@ -28,7 +29,7 @@ export default function ControlRoomCustomersPage() {
   const fetchCustomers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/controlroom/customers");
+      const res = await fetch(apiUrl("/api/controlroom/customers"));
       if (res.ok) {
         const json = await res.json();
         setCustomers(json.customers || []);

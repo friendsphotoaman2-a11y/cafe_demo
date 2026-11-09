@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { withBasePathUrl } from "@/lib/base-path";
 
 export const CANONICAL_PRODUCTION_BASE_URL = "https://cafe-demo-lovat-sigma.vercel.app";
 export const DEFAULT_LAN_BASE_URL = "http://10.84.23.121:3000";
@@ -12,11 +13,13 @@ export const STORAGE_KEY_QR_BASE = "tbw_cafe_qr_base_url";
  * 4. Vercel production domain / environment variable
  * 5. Production fallback (https://cafe-demo-lovat-sigma.vercel.app)
  * 6. Local development Wi-Fi LAN IP fallback
+ *
+ * Automatically attaches BASE_PATH (e.g. /demo/cafe) when running in multi-zone mode.
  */
 export function getBaseOrderingUrl(overrideUrl?: string): string {
   // 1. Explicit override from component state
   if (overrideUrl && overrideUrl.trim()) {
-    return overrideUrl.trim().replace(/\/+$/, "");
+    return withBasePathUrl(overrideUrl.trim());
   }
 
   // 2. Current browser origin (ensures mobile scanners on production always get canonical domain)
@@ -27,7 +30,7 @@ export function getBaseOrderingUrl(overrideUrl?: string): string {
       !origin.includes("127.0.0.1") &&
       !origin.includes("0.0.0.0")
     ) {
-      return origin.replace(/\/+$/, "");
+      return withBasePathUrl(origin);
     }
   }
 
@@ -36,7 +39,7 @@ export function getBaseOrderingUrl(overrideUrl?: string): string {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_QR_BASE);
       if (stored && stored.trim()) {
-        return stored.trim().replace(/\/+$/, "");
+        return withBasePathUrl(stored.trim());
       }
     } catch {
       // Ignored
@@ -45,25 +48,29 @@ export function getBaseOrderingUrl(overrideUrl?: string): string {
 
   // 4. Vercel environment variables
   if (process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL}`.replace(/\/+$/, "");
+    return withBasePathUrl(
+      `https://${process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL}`
+    );
   }
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`.replace(/\/+$/, "");
+    return withBasePathUrl(
+      `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    );
   }
 
   // 5. Explicit environment variable (if not localhost in production)
   const envUrl = process.env.NEXT_PUBLIC_ORDERING_BASE_URL;
   if (envUrl && envUrl.trim()) {
-    return envUrl.trim().replace(/\/+$/, "");
+    return withBasePathUrl(envUrl.trim());
   }
 
   // 6. Production fallback
   if (process.env.NODE_ENV === "production") {
-    return CANONICAL_PRODUCTION_BASE_URL;
+    return withBasePathUrl(CANONICAL_PRODUCTION_BASE_URL);
   }
 
   // 7. Local development Wi-Fi LAN IP fallback
-  return DEFAULT_LAN_BASE_URL;
+  return withBasePathUrl(DEFAULT_LAN_BASE_URL);
 }
 
 export function setStoredQrBaseUrl(url: string): void {

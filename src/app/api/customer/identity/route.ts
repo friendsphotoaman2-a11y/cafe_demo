@@ -7,6 +7,7 @@ import {
   createAndStoreCustomerDeviceSession,
   revokeCustomerDeviceSession,
 } from "@/lib/customer-session";
+import { getCookiePath } from "@/lib/base-path";
 
 // =========================================================================
 // GET: Retrieve authenticated customer profile from device session cookie
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     if (!sessionCheck.valid || !sessionCheck.customer) {
       // Invalid or expired token: clear cookie
       const res = NextResponse.json({ authenticated: false });
-      res.cookies.delete({ name: COOKIE_CUSTOMER_DEVICE, path: "/" });
+      res.cookies.delete({ name: COOKIE_CUSTOMER_DEVICE, path: getCookiePath() });
       return res;
     }
 
@@ -125,13 +126,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Set persistent HttpOnly cookie with path="/"
+    // Set persistent HttpOnly cookie
     response.cookies.set(COOKIE_CUSTOMER_DEVICE, rawToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: CUSTOMER_SESSION_MAX_AGE_SECONDS,
-      path: "/",
+      path: getCookiePath(),
     });
 
     return response;
@@ -161,7 +162,7 @@ export async function DELETE(req: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 0,
-      path: "/",
+      path: getCookiePath(),
     });
 
     return response;

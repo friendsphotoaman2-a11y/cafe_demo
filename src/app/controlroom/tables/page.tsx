@@ -14,6 +14,7 @@ import {
   CANONICAL_PRODUCTION_BASE_URL,
   DEFAULT_LAN_BASE_URL,
 } from "@/lib/qr-generator";
+import { withBasePathUrl } from "@/lib/base-path";
 import {
   QrCode,
   Users,
@@ -257,9 +258,10 @@ export default function ControlRoomTablesPage() {
               type="button"
               onClick={() => {
                 if (typeof window !== "undefined") {
-                  setInputBaseUrl(window.location.origin);
-                  setStoredQrBaseUrl(window.location.origin);
-                  setQrBaseUrl(window.location.origin);
+                  const targetHost = withBasePathUrl(window.location.origin);
+                  setInputBaseUrl(targetHost);
+                  setStoredQrBaseUrl(targetHost);
+                  setQrBaseUrl(targetHost);
                   setUrlSavedFeedback(true);
                   setTimeout(() => setUrlSavedFeedback(false), 2500);
                 }

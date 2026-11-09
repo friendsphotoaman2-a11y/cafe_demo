@@ -4,6 +4,7 @@ import {
   STAFF_CREDENTIALS,
   createStaffSessionToken,
 } from "@/lib/server-auth";
+import { getCookiePath } from "@/lib/base-path";
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24, // 24 hours
-      path: "/",
+      path: getCookiePath(),
     });
 
     return response;

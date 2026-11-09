@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { formatINR } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { apiUrl } from "@/lib/base-path";
 import {
   Award,
   Coffee,
@@ -41,7 +42,7 @@ export default function ControlRoomLoyaltyPage() {
   const fetchLoyalty = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/controlroom/loyalty");
+      const res = await fetch(apiUrl("/api/controlroom/loyalty"));
       if (res.ok) {
         const json = await res.json();
         setAccounts(json.loyaltyAccounts || []);
@@ -75,7 +76,7 @@ export default function ControlRoomLoyaltyPage() {
 
     try {
       setIsRedeeming(acc.id);
-      const res = await fetch("/api/loyalty/redeem", {
+      const res = await fetch(apiUrl("/api/loyalty/redeem"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

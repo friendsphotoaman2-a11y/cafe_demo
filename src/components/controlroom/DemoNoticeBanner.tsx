@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Database, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { apiUrl } from "@/lib/base-path";
 
 export default function DemoNoticeBanner() {
   const { user } = useAuth();
@@ -17,7 +18,7 @@ export default function DemoNoticeBanner() {
   });
 
   useEffect(() => {
-    fetch("/api/supabase/status")
+    fetch(apiUrl("/api/supabase/status"))
       .then((res) => res.json())
       .then((data) => {
         if (data.connected && data.migrated) {

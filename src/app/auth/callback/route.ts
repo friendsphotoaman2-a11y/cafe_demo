@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { withBasePath } from "@/lib/base-path";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -21,7 +22,8 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-    const response = NextResponse.redirect(`${baseUrl}${next}`);
+    const redirectUrl = `${baseUrl}${withBasePath(next)}`;
+    const response = NextResponse.redirect(redirectUrl);
 
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Fallback to control room login if oauth exchange fails
-  return NextResponse.redirect(`${baseUrl}/controlroom/login?error=oauth_failed`);
+  return NextResponse.redirect(`${baseUrl}${withBasePath("/controlroom/login?error=oauth_failed")}`);
 }
 
 

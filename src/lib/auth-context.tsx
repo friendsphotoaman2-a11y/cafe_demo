@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { apiUrl, withBasePath } from "@/lib/base-path";
 
 export type StaffRole = "owner" | "manager" | "cashier" | "kitchen";
 
@@ -92,10 +93,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? window.location.origin
         : "http://localhost:3000";
 
+    const callbackUrl = `${origin}${withBasePath(
+      "/auth/callback?next=" + encodeURIComponent(withBasePath("/controlroom"))
+    )}`;
+
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${origin}/auth/callback?next=/controlroom`,
+        redirectTo: callbackUrl,
       },
     });
   };
@@ -105,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pin?: string
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const res = await fetch("/api/auth/staff-login", {
+      const res = await fetch(apiUrl("/api/auth/staff-login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role, pin }),
@@ -130,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch("/api/auth/staff-logout", { method: "POST" });
+      await fetch(apiUrl("/api/auth/staff-logout"), { method: "POST" });
     } catch {
       // Ignored
     }

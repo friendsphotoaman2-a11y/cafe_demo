@@ -5,6 +5,7 @@ import Link from "next/link";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { useCafeStore } from "@/lib/store";
 import { formatINR } from "@/lib/utils";
+import { apiUrl } from "@/lib/base-path";
 import {
   DollarSign,
   Grid,
@@ -50,7 +51,7 @@ export default function ControlRoomDashboardPage() {
   // Authoritative server fetch from Supabase
   const fetchDashboardStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/controlroom/dashboard");
+      const res = await fetch(apiUrl("/api/controlroom/dashboard"));
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.kpis) {

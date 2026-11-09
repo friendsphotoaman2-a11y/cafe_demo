@@ -9,6 +9,7 @@ import {
   setStoredQrBaseUrl,
   DEFAULT_LAN_BASE_URL,
 } from "@/lib/qr-generator";
+import { apiUrl } from "@/lib/base-path";
 import {
   Save,
   Building2,
@@ -41,7 +42,7 @@ export default function ControlRoomSettingsPage() {
   const checkDbStatus = async () => {
     setDbStatus({ loading: true });
     try {
-      const res = await fetch("/api/supabase/status");
+      const res = await fetch(apiUrl("/api/supabase/status"));
       const data = await res.json();
       setDbStatus({
         loading: false,

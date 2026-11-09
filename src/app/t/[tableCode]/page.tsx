@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useCafeStore } from "@/lib/store";
 import { DEMO_CATEGORIES, DEMO_MENU_ITEMS, DEMO_SETTINGS } from "@/lib/demo-data";
 import { formatINR } from "@/lib/utils";
+import { apiUrl } from "@/lib/base-path";
 import {
   MenuItem,
   CartItem,
@@ -152,9 +153,11 @@ export default function TableOrderingPage({ params }: PageProps) {
           ? localStorage.getItem(`tbw_dining_token_${formattedCode}`)
           : null;
 
-      const url = `/api/orders?tableCode=${formattedCode}${
-        storedToken ? `&token=${encodeURIComponent(storedToken)}` : ""
-      }`;
+      const url = apiUrl(
+        `/api/orders?tableCode=${formattedCode}${
+          storedToken ? `&token=${encodeURIComponent(storedToken)}` : ""
+        }`
+      );
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -332,7 +335,7 @@ export default function TableOrderingPage({ params }: PageProps) {
       } catch {}
     }
     try {
-      await fetch("/api/customer/identity", {
+      await fetch(apiUrl("/api/customer/identity"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullName: name, phone }),
@@ -348,7 +351,7 @@ export default function TableOrderingPage({ params }: PageProps) {
 
   const confirmSwitchCustomer = async () => {
     try {
-      await fetch("/api/customer/identity", { method: "DELETE" });
+      await fetch(apiUrl("/api/customer/identity"), { method: "DELETE" });
     } catch {}
     if (typeof window !== "undefined") {
       try {

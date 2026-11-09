@@ -11,6 +11,7 @@ import {
   RememberedCustomer,
 } from "@/lib/customer-session";
 import { requireStaffRole } from "@/lib/server-auth";
+import { withBasePath, getCookiePath } from "@/lib/base-path";
 
 interface IncomingOrderItem {
   menuItemId: string;
@@ -769,17 +770,17 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 4, // 4 hours for active dining session
-      path: `/t/${formattedCode}`,
+      path: withBasePath(`/t/${formattedCode}`),
     });
 
-    // 2. Set persistent 90-day customer device session cookie with path="/" across ALL tables
+    // 2. Set persistent 90-day customer device session cookie across ALL tables
     if (newDeviceTokenToSet) {
       response.cookies.set(COOKIE_CUSTOMER_DEVICE, newDeviceTokenToSet, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         maxAge: CUSTOMER_SESSION_MAX_AGE_SECONDS,
-        path: "/",
+        path: getCookiePath(),
       });
     }
 

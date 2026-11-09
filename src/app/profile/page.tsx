@@ -6,6 +6,7 @@ import Navbar from "@/components/public/Navbar";
 import Footer from "@/components/public/Footer";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatINR } from "@/lib/utils";
+import { apiUrl } from "@/lib/base-path";
 import {
   Coffee,
   Calendar,
@@ -144,7 +145,7 @@ export default function CustomerProfilePage() {
       if (isInitial && !data) {
         setLoading(true);
       }
-      const res = await fetch("/api/customer/profile");
+      const res = await fetch(apiUrl("/api/customer/profile"));
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -189,7 +190,7 @@ export default function CustomerProfilePage() {
 
     try {
       setIsSubmittingLogin(true);
-      const res = await fetch("/api/customer/identity", {
+      const res = await fetch(apiUrl("/api/customer/identity"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullName: loginName.trim(), phone: cleanPhone }),
@@ -218,7 +219,7 @@ export default function CustomerProfilePage() {
 
   const confirmLogout = async () => {
     try {
-      await fetch("/api/customer/identity", { method: "DELETE" });
+      await fetch(apiUrl("/api/customer/identity"), { method: "DELETE" });
       setData({ authenticated: false });
       setIsLogoutConfirmOpen(false);
       if (typeof window !== "undefined") {

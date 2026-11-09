@@ -4,6 +4,7 @@ import {
   COOKIE_CUSTOMER_DEVICE,
   verifyCustomerDeviceSession,
 } from "@/lib/customer-session";
+import { getCookiePath } from "@/lib/base-path";
 
 // Mask phone for privacy (e.g. 9876543210 -> ******3210)
 function maskPhone(phone: string): string {
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     if (!sessionCheck.valid || !sessionCheck.customer) {
       const res = NextResponse.json({ authenticated: false }, { status: 401 });
-      res.cookies.delete({ name: COOKIE_CUSTOMER_DEVICE, path: "/" });
+      res.cookies.delete({ name: COOKIE_CUSTOMER_DEVICE, path: getCookiePath() });
       return res;
     }
 

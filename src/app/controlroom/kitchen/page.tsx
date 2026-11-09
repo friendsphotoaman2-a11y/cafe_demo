@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import ControlRoomHeader from "@/components/controlroom/Header";
 import { CafeOrder, OrderStatus } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
+import { apiUrl } from "@/lib/base-path";
 import {
   Clock,
   Play,
@@ -39,7 +40,7 @@ export default function ControlRoomKitchenPage() {
     setErrorBanner(null);
 
     try {
-      const res = await fetch(`/api/orders?orderId=${encodeURIComponent(orderToDelete.id)}`, {
+      const res = await fetch(apiUrl(`/api/orders?orderId=${encodeURIComponent(orderToDelete.id)}`), {
         method: "DELETE",
       });
       const data = await res.json();
@@ -90,7 +91,7 @@ export default function ControlRoomKitchenPage() {
   // Authoritative server fetch directly from Supabase via /api/orders
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch("/api/orders");
+      const res = await fetch(apiUrl("/api/orders"));
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && Array.isArray(data.orders)) {
@@ -134,7 +135,7 @@ export default function ControlRoomKitchenPage() {
 
     try {
       // 2. Server Validation with Expected Previous Status Guard
-      const res = await fetch("/api/orders/status", {
+      const res = await fetch(apiUrl("/api/orders/status"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
