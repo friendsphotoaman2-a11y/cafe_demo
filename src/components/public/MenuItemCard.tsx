@@ -25,7 +25,7 @@ export default function MenuItemCard({
   return (
     <div
       onClick={() => onSelect(item)}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-cafe-200/90 bg-white shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.99] hover:border-cafe-400"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-cafe-200/90 bg-white shadow-xs hover:shadow-xl transition-all duration-300 cursor-pointer active:scale-[0.99] hover:border-amber-400 hover:-translate-y-1"
     >
       {/* Media Aspect Container */}
       <div className="relative aspect-[16/10] w-full overflow-hidden bg-cafe-100/60">

@@ -8,6 +8,7 @@ import {
   Award,
   Sparkles,
   ArrowRight,
+  Coffee,
 } from "lucide-react";
 import { DEMO_SETTINGS } from "@/lib/demo-data";
 
@@ -17,9 +18,12 @@ export default function AboutPage() {
       <Navbar />
 
       <main className="flex-1">
-        {/* Luxury Hero Banner */}
-        <section className="relative overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-amber-950 text-white py-20 sm:py-32">
-          <div className="absolute inset-0 z-0 opacity-25">
+        {/* Luxury Hero Banner with Split Showcase - Full Fold Height */}
+        <section className="relative overflow-hidden bg-gradient-to-b from-zinc-950 via-zinc-900 to-amber-950 text-white min-h-[calc(100vh-5rem)] flex items-center py-12 sm:py-16">
+          <div className="absolute top-0 left-1/3 w-96 h-96 bg-amber-500/15 blur-[140px] pointer-events-none rounded-full" />
+
+          {/* Background image overlay */}
+          <div className="absolute inset-0 z-0 opacity-15">
             <Image
               src="https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=1920&q=80"
               alt="Coffee beans roaster"
@@ -27,23 +31,69 @@ export default function AboutPage() {
               priority
               className="object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/90 to-zinc-950/70" />
           </div>
 
-          <div className="relative z-10 mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8 space-y-5">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-1.5 text-xs font-bold text-amber-300 backdrop-blur-md shadow-xs">
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Our Roots &amp; Roasting Philosophy</span>
-            </span>
+          <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 w-full">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+              <div className="lg:col-span-7 space-y-6 text-left">
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-1.5 text-xs font-bold text-amber-300 backdrop-blur-md shadow-xs">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Our Roots &bull; Roasting Philosophy</span>
+                </span>
 
-            <h1 className="font-serif text-4xl sm:text-6xl font-black tracking-tight text-white leading-[1.15]">
-              Rooted in Bean Sourcing. Dedicated to the Perfect Cup.
-            </h1>
+                <h1 className="font-serif text-4xl sm:text-6xl font-black tracking-tight text-white leading-[1.12]">
+                  Rooted in Sourcing. Dedicated to the{" "}
+                  <span className="bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent">
+                    Perfect Cup.
+                  </span>
+                </h1>
 
-            <p className="mt-4 text-sm sm:text-lg text-zinc-300 leading-relaxed font-light max-w-2xl mx-auto">
-              At {DEMO_SETTINGS.brandName}, coffee is neither an afterthought nor a rush. It is a slow,
-              reverent art uniting heritage Western Ghats estates with contemporary extraction techniques.
-            </p>
+                <p className="text-sm sm:text-lg text-zinc-300 leading-relaxed font-light max-w-2xl">
+                  At {DEMO_SETTINGS.brandName}, coffee is neither an afterthought nor a rush. It is a slow,
+                  reverent art uniting heritage Western Ghats family estates with contemporary precision extraction techniques.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <Link
+                    href="/menu"
+                    className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 px-6 py-3.5 text-xs sm:text-sm font-black text-zinc-950 shadow-md hover:from-amber-300 hover:to-amber-400 transition active:scale-95"
+                  >
+                    <Coffee className="h-4 w-4" />
+                    <span>Explore Our Roasts</span>
+                  </Link>
+
+                  <Link
+                    href="/contact"
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-white/10 hover:bg-white/15 px-6 py-3.5 text-xs sm:text-sm font-bold text-white backdrop-blur-md transition active:scale-95"
+                  >
+                    <span>Visit Our Roastery</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Right Hero Image Card */}
+              <div className="lg:col-span-5 relative">
+                <div className="relative rounded-3xl overflow-hidden border border-amber-400/30 shadow-2xl bg-zinc-900 aspect-[4/3] sm:aspect-[4/3] lg:aspect-[4/4]">
+                  <Image
+                    src="https://images.unsplash.com/photo-1498804103079-a6351b050096?auto=format&fit=crop&w=1000&q=80"
+                    alt="Barista brewing pour over coffee"
+                    fill
+                    className="object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/80 via-transparent to-transparent" />
+                  <div className="absolute bottom-4 left-4 right-4 p-3.5 rounded-2xl bg-zinc-950/80 border border-white/20 backdrop-blur-md">
+                    <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider block">
+                      Single-Origin Chikmagalur
+                    </span>
+                    <span className="text-xs text-zinc-200 font-semibold">
+                      Roasted weekly in small 5kg batches for maximum aroma
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -92,8 +142,8 @@ export default function AboutPage() {
 
               <div className="relative h-80 sm:h-96 lg:h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-zinc-200">
                 <Image
-                  src="https://images.unsplash.com/photo-1498804103079-a6351b050096?auto=format&fit=crop&w=1000&q=80"
-                  alt="Barista brewing pour over coffee"
+                  src="https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=1000&q=80"
+                  alt="Freshly brewed espresso and coffee beans"
                   fill
                   className="object-cover"
                 />

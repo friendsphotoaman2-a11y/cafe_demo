@@ -6,18 +6,20 @@ import Footer from "@/components/public/Footer";
 import CategoryFilter from "@/components/public/CategoryFilter";
 import MenuItemCard from "@/components/public/MenuItemCard";
 import ItemDetailModal from "@/components/public/ItemDetailModal";
+import QrScannerModal from "@/components/public/QrScannerModal";
 import {
   DEMO_CATEGORIES,
   DEMO_MENU_ITEMS,
 } from "@/lib/demo-data";
 import { MenuItem } from "@/lib/types";
-import { Search, Sparkles, X } from "lucide-react";
+import { Search, Sparkles, X, QrCode, ArrowRight } from "lucide-react";
 
 export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedVegFilter, setSelectedVegFilter] = useState<string>("all");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   const filteredItems = useMemo(() => {
     return DEMO_MENU_ITEMS.filter((item) => {
@@ -70,10 +72,21 @@ export default function MenuPage() {
                 </p>
               </div>
 
-              {/* Status pill */}
-              <div className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 shadow-xs">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Live Kitchen &bull; Handcrafted to Order</span>
+              {/* Status pill & Quick QR action */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <button
+                  onClick={() => setIsQrModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-400 px-4 py-2 text-xs font-black text-zinc-950 shadow-md transition active:scale-95"
+                >
+                  <QrCode className="h-4 w-4" />
+                  <span>Scan Table QR to Order</span>
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+
+                <div className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2 text-xs font-bold text-zinc-700 shadow-xs">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Live Kitchen &bull; Handcrafted</span>
+                </div>
               </div>
             </div>
           </div>
@@ -199,6 +212,11 @@ export default function MenuPage() {
         item={selectedItem}
         isOpen={!!selectedItem}
         onClose={() => setSelectedItem(null)}
+      />
+
+      <QrScannerModal
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
       />
     </div>
   );

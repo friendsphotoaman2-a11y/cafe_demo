@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, use } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import CategoryFilter from "@/components/public/CategoryFilter";
 import MenuItemCard from "@/components/public/MenuItemCard";
@@ -30,6 +31,7 @@ import {
   CheckCircle2,
   Receipt,
   X,
+  UtensilsCrossed,
 } from "lucide-react";
 
 interface PageProps {
@@ -527,9 +529,21 @@ export default function TableOrderingPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* 4. Compact Ordering Hero & View Tabs */}
-      <section className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-amber-950 text-white px-4 py-4 shadow-md">
-        <div className="mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* 4. Luxury Ordering Hero & View Tabs with Ambient Photo Accent */}
+      <section className="relative overflow-hidden bg-gradient-to-r from-zinc-950 via-zinc-900 to-amber-950 text-white px-4 py-5 shadow-lg border-b border-amber-900/20">
+        {/* Subtle Background Glow & Coffee Atmosphere */}
+        <div className="absolute top-0 right-1/4 w-72 h-72 bg-amber-500/10 blur-[100px] pointer-events-none rounded-full" />
+        <div className="absolute inset-0 z-0 opacity-15 pointer-events-none">
+          <Image
+            src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1200&q=80"
+            alt="Café Ambience"
+            fill
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/90 to-zinc-950/80" />
+        </div>
+
+        <div className="relative z-10 mx-auto max-w-7xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-amber-300 text-xs font-bold">
               <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -537,34 +551,36 @@ export default function TableOrderingPage({ params }: PageProps) {
               <span>&bull;</span>
               <span className="text-zinc-300">Contactless QR Dining</span>
             </div>
-            <h1 className="font-serif text-xl sm:text-2xl font-black mt-1">
+            <h1 className="font-serif text-xl sm:text-2xl font-black mt-1 text-white">
               Table {formattedCode} &bull; {currentTable.section}
             </h1>
-            <p className="text-[11px] text-zinc-300 font-light mt-0.5">
-              Order multiple rounds anytime &bull; Your running bill consolidates at the counter
+            <p className="text-[11px] text-zinc-300 font-light mt-0.5 max-w-md">
+              Order multiple rounds anytime &bull; Handcrafted by our baristas &bull; Consolidated counter checkout
             </p>
           </div>
 
           {/* Navigation Tabs: Menu / My Orders / Running Bill */}
-          <div className="flex items-center gap-1.5 bg-white/10 p-1.5 rounded-2xl backdrop-blur-md self-start sm:self-auto border border-white/10 shadow-inner">
+          <div className="flex items-center gap-1.5 bg-zinc-900/80 p-1.5 rounded-2xl backdrop-blur-xl self-start sm:self-auto border border-white/10 shadow-xl">
             <button
               onClick={() => setActiveViewTab("menu")}
-              className={`rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
+              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
                 activeViewTab === "menu"
-                  ? "bg-amber-400 text-zinc-950 shadow-md"
-                  : "text-zinc-300 hover:text-white"
+                  ? "bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 shadow-md scale-[1.02]"
+                  : "text-zinc-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              Artisan Menu
+              <UtensilsCrossed className="h-3.5 w-3.5" />
+              <span>Artisan Menu</span>
             </button>
             <button
               onClick={() => setActiveViewTab("orders")}
               className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
                 activeViewTab === "orders"
-                  ? "bg-amber-400 text-zinc-950 shadow-md"
-                  : "text-zinc-300 hover:text-white"
+                  ? "bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 shadow-md scale-[1.02]"
+                  : "text-zinc-300 hover:text-white hover:bg-white/5"
               }`}
             >
+              <ShoppingBag className="h-3.5 w-3.5" />
               <span>My Orders</span>
               {effectiveOrders.length > 0 && (
                 <span
@@ -582,14 +598,14 @@ export default function TableOrderingPage({ params }: PageProps) {
               onClick={() => setActiveViewTab("bill")}
               className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-black transition-all ${
                 activeViewTab === "bill"
-                  ? "bg-amber-400 text-zinc-950 shadow-md"
-                  : "text-zinc-300 hover:text-white"
+                  ? "bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 shadow-md scale-[1.02]"
+                  : "text-zinc-300 hover:text-white hover:bg-white/5"
               }`}
             >
               <Receipt className="h-3.5 w-3.5" />
               <span>Table Bill</span>
               {effectiveBill && effectiveBill.totalAmount > 0 && (
-                <span className={`text-[10px] font-bold ${activeViewTab === "bill" ? "text-zinc-950" : "text-amber-300"}`}>
+                <span className={`text-[10px] font-bold ${activeViewTab === "bill" ? "text-zinc-950 font-black" : "text-amber-300"}`}>
                   ({formatINR(effectiveBill.totalAmount)})
                 </span>
               )}

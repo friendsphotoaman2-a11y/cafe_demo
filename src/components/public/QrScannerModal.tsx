@@ -2,7 +2,16 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, X, AlertCircle, RefreshCw, Hash, ArrowRight } from "lucide-react";
+import {
+  Camera,
+  X,
+  AlertCircle,
+  RefreshCw,
+  Hash,
+  ArrowRight,
+  UploadCloud,
+  CheckCircle2,
+} from "lucide-react";
 import jsQR from "jsqr";
 
 interface QrScannerModalProps {
@@ -36,14 +45,15 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  const [hasCameraSupport, setHasCameraSupport] = useState<boolean>(true);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isStartingCamera, setIsStartingCamera] = useState<boolean>(false);
   const [manualCode, setManualCode] = useState<string>("");
   const [scanSuccessCode, setScanSuccessCode] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) {
@@ -51,12 +61,17 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
       animFrameRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setIsStartingCamera(false);
   }, []);
 
   const handleDetectedCode = useCallback(
@@ -69,6 +84,8 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
           onClose();
           router.push(`/t/${tableCode}`);
         }, 700);
+      } else {
+        setUploadNotice(`Unrecognized QR: "${scannedString.slice(0, 30)}". Please select table below.`);
       }
     },
     [onClose, router, stopCamera]
@@ -78,26 +95,27 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      animFrameRef.current = requestAnimationFrame(requestScan);
-      return;
-    }
+    if (!video || !canvas) return;
 
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        try {
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert",
-    });
-
-    if (code && code.data) {
-      handleDetectedCode(code.data);
-      return;
+          if (code && code.data) {
+            handleDetectedCode(code.data);
+            return;
+          }
+        } catch {}
+      }
     }
 
     animFrameRef.current = requestAnimationFrame(requestScan);
@@ -105,6 +123,7 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
+    setUploadNotice(null);
     setIsStartingCamera(true);
 
     if (
@@ -112,50 +131,99 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia
     ) {
-      setHasCameraSupport(false);
       setCameraError(
-        "Camera access is not supported by this browser context (requires HTTPS or modern browser)."
+        "Camera access is not supported by your browser or environment. You can enter table code manually or upload QR photo below."
       );
       setIsStartingCamera(false);
       return;
     }
 
+    // Stop any existing stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    let stream: MediaStream | null = null;
+
+    // Strategy 1: Ideal environment camera (smartphones back camera)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
+    } catch {
+      // Strategy 2: Fallback to any default video device (laptops, webcams, desktop USB cameras)
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      } catch (err: unknown) {
+        setIsStartingCamera(false);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        if (
+          errorMsg.toLowerCase().includes("permission") ||
+          errorMsg.toLowerCase().includes("denied") ||
+          (err as { name?: string }).name === "NotAllowedError"
+        ) {
+          setCameraError(
+            "Camera permission was denied in your browser settings. Please allow camera permissions, or select your table below."
+          );
+        } else if (
+          errorMsg.toLowerCase().includes("notfound") ||
+          (err as { name?: string }).name === "NotFoundError"
+        ) {
+          setCameraError(
+            "No webcam or camera device was found on this computer. Select your table below."
+          );
+        } else if (
+          errorMsg.toLowerCase().includes("readable") ||
+          (err as { name?: string }).name === "NotReadableError"
+        ) {
+          setCameraError(
+            "Camera is currently being used by another application (e.g. Zoom or Teams). Please close other apps or pick table below."
+          );
+        } else {
+          setCameraError(
+            `Unable to start camera (${errorMsg || "Device busy"}). Select your table below.`
+          );
+        }
+        return;
+      }
+    }
 
-      streamRef.current = stream;
+    if (!stream) {
+      setIsStartingCamera(false);
+      setCameraError("Unable to access video stream. Select your table below.");
+      return;
+    }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute("playsinline", "true");
-        await videoRef.current.play();
+    streamRef.current = stream;
+
+    // Ensure video element receives the stream
+    const video = videoRef.current;
+    if (video) {
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+
+      const onPlaying = () => {
         setIsStartingCamera(false);
         requestScan();
-      }
-    } catch (err: unknown) {
+      };
+
+      video.onloadedmetadata = async () => {
+        try {
+          await video.play();
+          onPlaying();
+        } catch {
+          // Fallback if browser requires user gesture
+          setIsStartingCamera(false);
+        }
+      };
+    } else {
       setIsStartingCamera(false);
-      const errorMsg =
-        err instanceof Error ? err.message : "Unable to access camera.";
-      if (
-        errorMsg.toLowerCase().includes("permission") ||
-        errorMsg.toLowerCase().includes("denied") ||
-        (err as { name?: string }).name === "NotAllowedError"
-      ) {
-        setCameraError(
-          "Camera permission was denied. Select a table below or enter the table number manually."
-        );
-      } else {
-        setCameraError(
-          "Could not initialize camera stream. Select your table below or enter code manually."
-        );
-      }
     }
   }, [requestScan]);
 
@@ -164,6 +232,7 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
       stopCamera();
       setCameraError(null);
       setScanSuccessCode(null);
+      setUploadNotice(null);
       return;
     }
 
@@ -182,13 +251,49 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
     router.push(`/t/${formatted}`);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadNotice("Scanning uploaded image for QR code...");
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          setUploadNotice("Failed to inspect photo.");
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        try {
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (code && code.data) {
+            handleDetectedCode(code.data);
+          } else {
+            setUploadNotice("No QR code found in this photo. Please select your table below.");
+          }
+        } catch {
+          setUploadNotice("Unable to read image. Please enter table number directly.");
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-md overflow-hidden rounded-3xl bg-zinc-950 border border-zinc-800 text-white shadow-2xl space-y-0">
+        
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800/80 px-6 py-4 bg-zinc-900/60">
+        <div className="flex items-center justify-between border-b border-zinc-800/80 px-5 sm:px-6 py-4 bg-zinc-900/60">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400 text-zinc-950 font-black shadow-xs">
               <Camera className="h-4 w-4" />
@@ -208,69 +313,85 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
         </div>
 
         {/* Viewport Area */}
-        <div className="relative bg-black flex flex-col items-center justify-center min-h-[260px] overflow-hidden">
-          {scanSuccessCode ? (
-            <div className="flex flex-col items-center justify-center p-8 text-center animate-pulse">
+        <div className="relative bg-black flex flex-col items-center justify-center min-h-[250px] overflow-hidden">
+          {/* Always mount video element to avoid ref detachment */}
+          <video
+            ref={videoRef}
+            className={`w-full h-[250px] object-cover ${cameraError || scanSuccessCode ? "opacity-10 pointer-events-none" : "opacity-100"}`}
+            autoPlay
+            playsInline
+            muted
+          />
+          <canvas ref={canvasRef} className="hidden" />
+
+          {/* Success Overlay */}
+          {scanSuccessCode && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/95 p-6 text-center animate-fade-in z-20">
               <div className="h-16 w-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3">
-                <Hash className="h-8 w-8" />
+                <CheckCircle2 className="h-8 w-8" />
               </div>
-              <h4 className="font-serif text-xl font-bold text-emerald-400">
+              <h4 className="font-serif text-2xl font-bold text-emerald-400">
                 Table {scanSuccessCode} Detected!
               </h4>
               <p className="text-xs text-zinc-300 mt-1">
                 Opening your digital table menu...
               </p>
             </div>
-          ) : cameraError || !hasCameraSupport ? (
-            <div className="p-6 text-center max-w-sm space-y-2">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 mb-2">
+          )}
+
+          {/* Loading Camera Overlay */}
+          {isStartingCamera && !cameraError && !scanSuccessCode && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 z-10 text-zinc-300 p-4 text-center">
+              <RefreshCw className="h-7 w-7 animate-spin text-amber-400 mb-2.5" />
+              <span className="text-xs font-bold">Accessing camera stream...</span>
+              <span className="text-[11px] text-zinc-400 mt-1">Please allow camera permissions if prompted</span>
+            </div>
+          )}
+
+          {/* Camera Error / Notice Overlay */}
+          {cameraError && !scanSuccessCode && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/95 p-6 text-center z-20 space-y-2.5">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 mb-1">
                 <AlertCircle className="h-6 w-6" />
               </div>
-              <p className="text-sm font-bold text-zinc-200">
+              <p className="text-xs sm:text-sm font-bold text-zinc-200">
                 Camera Notice
               </p>
-              <p className="text-xs text-zinc-400 leading-relaxed font-light">
-                {cameraError || "Camera scanner unavailable."}
+              <p className="text-xs text-zinc-400 leading-relaxed font-light max-w-xs">
+                {cameraError}
               </p>
-              {hasCameraSupport && (
+              <div className="flex items-center gap-3 pt-1">
                 <button
+                  type="button"
                   onClick={startCamera}
-                  className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 underline font-bold pt-1"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs text-amber-300 font-bold transition"
                 >
                   <RefreshCw className="h-3 w-3" /> Retry Camera
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 text-xs text-white font-bold transition"
+                >
+                  <UploadCloud className="h-3.5 w-3.5" /> Upload QR Image
+                </button>
+              </div>
             </div>
-          ) : (
-            <div className="relative w-full h-[260px] bg-black">
-              {isStartingCamera && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 text-zinc-400">
-                  <RefreshCw className="h-6 w-6 animate-spin text-amber-400 mb-2" />
-                  <span className="text-xs font-bold">Initializing camera stream...</span>
-                </div>
-              )}
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                autoPlay
-                playsInline
-                muted
-              />
-              <canvas ref={canvasRef} className="hidden" />
+          )}
 
-              {/* Viewfinder Target Overlay */}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="relative h-44 w-44 border-2 border-amber-400/80 rounded-2xl">
-                  {/* Glowing corners */}
-                  <div className="absolute -top-1 -left-1 h-4 w-4 border-t-2 border-l-2 border-amber-400" />
-                  <div className="absolute -top-1 -right-1 h-4 w-4 border-t-2 border-r-2 border-amber-400" />
-                  <div className="absolute -bottom-1 -left-1 h-4 w-4 border-b-2 border-l-2 border-amber-400" />
-                  <div className="absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-amber-400" />
-                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-amber-400/30 animate-pulse" />
-                </div>
+          {/* Viewfinder Target Overlay when camera is active */}
+          {!cameraError && !scanSuccessCode && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="relative h-44 w-44 border-2 border-amber-400/80 rounded-2xl">
+                {/* Glowing corners */}
+                <div className="absolute -top-1 -left-1 h-4 w-4 border-t-2 border-l-2 border-amber-400" />
+                <div className="absolute -top-1 -right-1 h-4 w-4 border-t-2 border-r-2 border-amber-400" />
+                <div className="absolute -bottom-1 -left-1 h-4 w-4 border-b-2 border-l-2 border-amber-400" />
+                <div className="absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-amber-400" />
+                <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-amber-400/40 animate-pulse" />
               </div>
               <div className="absolute bottom-3 left-0 right-0 text-center pointer-events-none">
-                <span className="inline-block bg-black/70 backdrop-blur-md px-3.5 py-1 rounded-full text-[10px] font-bold text-amber-300">
+                <span className="inline-block bg-black/75 backdrop-blur-md px-3.5 py-1 rounded-full text-[10px] font-bold text-amber-300">
                   Point camera at the table QR stand
                 </span>
               </div>
@@ -278,8 +399,24 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
           )}
         </div>
 
+        {/* Upload notice if any */}
+        {uploadNotice && (
+          <div className="bg-amber-950/80 border-t border-amber-800/40 px-4 py-2 text-[11px] text-amber-200 text-center">
+            {uploadNotice}
+          </div>
+        )}
+
+        {/* Hidden File Input for QR Image Upload */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageUpload}
+        />
+
         {/* Manual Table Entry & All 12 Tables Grid */}
-        <div className="border-t border-zinc-800/80 bg-zinc-900/90 p-5 space-y-4">
+        <div className="border-t border-zinc-800/80 bg-zinc-900/90 p-4 sm:p-5 space-y-3.5">
           <form onSubmit={handleManualSubmit} className="flex gap-2">
             <div className="relative flex-1">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
@@ -306,9 +443,18 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
 
           {/* Quick Select Table Buttons Grid */}
           <div className="space-y-1.5 pt-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
-              Direct Table Jump (12 Available Tables):
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                Direct Table Jump (12 Available Tables):
+              </span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline"
+              >
+                Upload QR image
+              </button>
+            </div>
             <div className="grid grid-cols-6 sm:grid-cols-6 gap-1.5">
               {ALL_TABLE_CODES.map((code) => (
                 <button
@@ -326,6 +472,7 @@ export default function QrScannerModal({ isOpen, onClose }: QrScannerModalProps)
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
