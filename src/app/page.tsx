@@ -47,6 +47,17 @@ export default function HomePage() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [activeFilter, setActiveFilter] = useState<"all" | "coffee" | "food">("all");
 
+  // Handle Supabase OAuth callback if redirected to root with ?code=
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const code = searchParams.get("code");
+      if (code) {
+        window.location.href = `/auth/callback?code=${encodeURIComponent(code)}&next=/controlroom`;
+      }
+    }
+  }, []);
+
   const featuredItems = DEMO_MENU_ITEMS.filter((item) => {
     if (!item.isFeatured) return false;
     if (activeFilter === "coffee") return item.categoryId === "artisan-coffee";
