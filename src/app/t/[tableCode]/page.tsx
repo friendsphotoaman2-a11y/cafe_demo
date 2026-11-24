@@ -25,6 +25,7 @@ import {
   Flame,
   CheckCircle2,
   Sparkles,
+  Delete,
 } from 'lucide-react';
 
 import { useTranslation } from '@/lib/i18n';
@@ -43,6 +44,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // Authentication & Session State
   const [pin, setPin] = useState('');
   const [isPinVerified, setIsPinVerified] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isSessionEnded, setIsSessionEnded] = useState(false);
   const [activeTab, setActiveTab] = useState<'menu' | 'orders'>('menu');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -111,7 +113,10 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         localStorage.getItem(`cafe_table_num_${tableCode}`) ||
         sessionStorage.getItem(`cafe_table_num_${tableCode}`);
 
-      if (!savedToken || !savedSessionId) return;
+      if (!savedToken || !savedSessionId) {
+        setIsCheckingSession(false);
+        return;
+      }
 
       try {
         const res = await fetch(
@@ -138,6 +143,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         localStorage.removeItem(`cafe_session_id_${tableCode}`);
         sessionStorage.removeItem(`cafe_session_${tableCode}`);
         sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+      } finally {
+        setIsCheckingSession(false);
       }
     }
 
@@ -156,10 +163,22 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     return () => clearInterval(timer);
   }, [lockCountdown, isLocked]);
 
+  // Haptic feedback helper
+  const triggerHaptic = (ms: number = 35) => {
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(ms);
+      } catch {
+        // Ignore on unsupported browsers
+      }
+    }
+  };
+
   // Handle PIN verification
-  async function handleVerifyPin(e?: React.FormEvent) {
+  async function handleVerifyPin(e?: React.FormEvent, pinToVerify?: string) {
     if (e) e.preventDefault();
-    if (pin.length !== 4) {
+    const targetPin = pinToVerify !== undefined ? pinToVerify : pin;
+    if (targetPin.length !== 4) {
       setPinError(
         language === 'hi'
           ? 'कृपया 4-अंकों का पिन दर्ज करें।'
@@ -180,7 +199,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       const res = await fetch(apiUrl('/api/table/verify-pin'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_code: tableCode, pin, device_id: deviceId }),
+        body: JSON.stringify({ table_code: tableCode, pin: targetPin, device_id: deviceId }),
       });
 
       const data = await res.json();
@@ -221,6 +240,27 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       setPinError(defaultInvalidMsg);
     } finally {
       setVerifyingPin(false);
+    }
+  }
+
+  // Keypad button press handler with haptic feedback & auto-submit on 4th digit
+  function handleKeypadPress(btn: string) {
+    triggerHaptic(35);
+    if (btn === 'C') {
+      setPin('');
+      setPinError(null);
+    } else if (btn === 'DEL' || btn === '⌫') {
+      setPin(prev => prev.slice(0, -1));
+      setPinError(null);
+    } else {
+      if (pin.length < 4) {
+        const nextPin = pin + btn;
+        setPin(nextPin);
+        setPinError(null);
+        if (nextPin.length === 4) {
+          handleVerifyPin(undefined, nextPin);
+        }
+      }
     }
   }
 
@@ -634,29 +674,66 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   }
 
   // -------------------------------------------------------------
+  // SCREEN 0: SESSION CHECKING SKELETON (Prevents PIN screen flicker on refresh)
+  // -------------------------------------------------------------
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen w-full bg-[#f8f5f0] flex flex-col justify-center items-center p-6 text-center select-none">
+        <div className="relative mb-5">
+          <div className="w-16 h-16 rounded-3xl bg-linear-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center text-3xl shadow-xl shadow-amber-500/25 animate-pulse">
+            ☕
+          </div>
+          <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
+          </span>
+        </div>
+        <h2 className="text-xl font-black text-amber-950 tracking-tight">
+          {language === 'hi' ? 'ब्रू एंड बाइट्स कैफे' : 'Brew & Bites Cafe'}
+        </h2>
+        <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-amber-100/80 border border-amber-200/60 text-xs font-bold text-amber-900">
+          <span>{tableNumber}</span>
+          <span>•</span>
+          <span className="text-amber-700">
+            {language === 'hi' ? 'मेनू लोड हो रहा है...' : 'Opening menu...'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
   // SCREEN 1: 4-DIGIT PIN AUTHENTICATION SCREEN
   // -------------------------------------------------------------
   if (!isPinVerified) {
     const lockMinutes = Math.max(1, Math.ceil(lockCountdown / 60));
 
     return (
-      <div className="min-h-screen bg-linear-to-b from-amber-500/10 via-amber-50/50 to-white flex flex-col justify-center items-center p-4">
+      <div className="min-h-screen w-full bg-[#f8f5f0] flex flex-col justify-center items-center p-4 sm:p-6 select-none">
         {/* Top Header with Cafe Branding & Language Switch */}
-        <div className="w-full max-w-sm flex items-center justify-between mb-3 px-1">
+        <div className="w-full max-w-sm flex items-center justify-between mb-3 px-2">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+            <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-base shadow-md shadow-amber-500/20">
               ☕
             </div>
-            <span className="font-bold text-sm text-gray-800">
-              {language === 'hi' ? 'ब्रू एंड बाइट्स कैफे' : 'Brew & Bites Cafe'}
-            </span>
+            <div>
+              <span className="font-extrabold text-sm text-gray-900 block leading-tight">
+                {language === 'hi' ? 'ब्रू एंड बाइट्स कैफे' : 'Brew & Bites Cafe'}
+              </span>
+              <span className="text-[11px] font-semibold text-amber-700 inline-block bg-amber-100/80 px-2 py-0.2 rounded-md">
+                {tableNumber}
+              </span>
+            </div>
           </div>
 
           {/* Hindi / English Toggle */}
           <button
             type="button"
-            onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-200 bg-white shadow-xs text-xs font-semibold text-gray-700 hover:bg-amber-50 active:scale-95 transition"
+            onClick={() => {
+              triggerHaptic(20);
+              setLanguage(language === 'en' ? 'hi' : 'en');
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-200 bg-white shadow-xs text-xs font-bold text-amber-900 hover:bg-amber-50 active:scale-95 transition cursor-pointer"
             title="Toggle Hindi / English"
           >
             <Languages className="w-3.5 h-3.5 text-amber-600" />
@@ -665,9 +742,9 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         </div>
 
         {/* PIN Card */}
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-amber-100 p-6 sm:p-8 text-center animate-fade-in">
-          <div className="w-14 h-14 bg-amber-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-amber-500/30">
-            <Lock className="w-7 h-7" />
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl shadow-amber-950/5 border border-amber-100 p-6 sm:p-7 text-center animate-fade-in flex flex-col">
+          <div className="w-14 h-14 bg-linear-to-br from-amber-400 to-amber-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-amber-500/25">
+            <Lock className="w-6 h-6" />
           </div>
 
           <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
@@ -675,10 +752,10 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               ? `${tableNumber} में आपका स्वागत है`
               : `Welcome to ${tableNumber}`}
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1 mb-5 leading-relaxed">
+          <p className="text-xs text-gray-500 mt-1 mb-4 leading-relaxed font-medium">
             {language === 'hi'
-              ? 'मेनू देखने और ऑर्डर करने के लिए मैनेजर द्वारा दिया गया 4-अंकों का पिन दर्ज करें।'
-              : 'Enter the 4-digit PIN provided by your server to view the menu and start ordering.'}
+              ? 'मेनू देखने और ऑर्डर करने के लिए 4-अंकों का पिन दर्ज करें।'
+              : 'Enter the 4-digit PIN to view menu and start ordering.'}
           </p>
 
           {isLocked ? (
@@ -687,7 +764,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 <AlertTriangle className="w-5 h-5 shrink-0" />
                 <span>{language === 'hi' ? 'टेबल लॉक है' : 'Table Locked'}</span>
               </div>
-              <p className="text-xs sm:text-sm text-red-600 mb-3 font-medium leading-normal">
+              <p className="text-xs text-red-600 mb-3 font-medium leading-normal">
                 {language === 'hi'
                   ? `बहुत सारे गलत प्रयास। टेबल ${lockMinutes} मिनट के लिए लॉक है। कृपया मैनेजर से बात करें।`
                   : `Too many wrong attempts. Table is locked for ${lockMinutes} minute(s). Please talk to manager.`}
@@ -701,37 +778,30 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               </div>
             </div>
           ) : (
-            <form onSubmit={handleVerifyPin} className="space-y-4 sm:space-y-5">
-              {/* Hidden native input for keyboard accessibility */}
-              <input
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={4}
-                value={pin}
-                onChange={e => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                  setPin(val);
-                  setPinError(null);
-                }}
-                className="sr-only"
-                autoFocus
-              />
-
-              {/* 4 Large Digit Boxes */}
-              <div className="flex justify-center gap-2.5 sm:gap-3 my-2">
+            <div className="space-y-4">
+              {/* 4 Large Digit Display Boxes (NO native keyboard pop-up) */}
+              <div className="flex justify-center gap-2.5 sm:gap-3 my-1">
                 {[0, 1, 2, 3].map(index => {
-                  const digit = pin[index] || '';
+                  const digit = pin[index];
+                  const isActive = index === pin.length && !verifyingPin;
                   return (
                     <div
                       key={index}
-                      className={`w-14 h-16 sm:w-16 sm:h-20 rounded-2xl border-2 flex items-center justify-center text-3xl font-extrabold select-none transition-all ${
+                      className={`w-13 h-15 sm:w-15 sm:h-17 rounded-2xl border-2 flex items-center justify-center text-3xl font-black select-none transition-all duration-200 ${
                         digit
-                          ? 'border-amber-500 bg-amber-50 text-amber-900 scale-105 shadow-sm ring-4 ring-amber-500/10'
-                          : 'border-gray-200 bg-gray-50 text-gray-300'
+                          ? 'border-amber-500 bg-amber-50/70 text-amber-950 scale-105 shadow-xs ring-4 ring-amber-500/10'
+                          : isActive
+                          ? 'border-amber-400 bg-white ring-4 ring-amber-400/20'
+                          : 'border-gray-200 bg-gray-50/70 text-gray-300'
                       }`}
                     >
-                      {digit || ''}
+                      {digit ? (
+                        <span>{digit}</span>
+                      ) : isActive ? (
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                      )}
                     </div>
                   );
                 })}
@@ -739,60 +809,73 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
               {/* Error Message */}
               {pinError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-semibold leading-relaxed animate-shake">
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-semibold leading-relaxed animate-shake">
                   {pinError}
                 </div>
               )}
 
-              {/* Virtual Large Touch Keypad */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-xs mx-auto">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map(btn => (
-                  <button
-                    key={btn}
-                    type="button"
-                    onClick={() => {
-                      if (btn === 'C') {
-                        setPin('');
-                        setPinError(null);
-                      } else if (btn === '⌫') {
-                        setPin(prev => prev.slice(0, -1));
-                        setPinError(null);
-                      } else {
-                        if (pin.length < 4) {
-                          const newPin = pin + btn;
-                          setPin(newPin);
-                          setPinError(null);
-                        }
-                      }
-                    }}
-                    className="h-13 sm:h-14 rounded-2xl bg-gray-100 hover:bg-amber-100 active:bg-amber-200 text-gray-800 hover:text-amber-950 font-extrabold text-xl active:scale-90 transition-all flex items-center justify-center shadow-xs cursor-pointer select-none touch-manipulation"
-                  >
-                    {btn}
-                  </button>
-                ))}
+              {/* Virtual Touch Keypad */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-xs mx-auto pt-1">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'DEL'].map(btn => {
+                  const isClear = btn === 'C';
+                  const isDelete = btn === 'DEL';
+
+                  return (
+                    <button
+                      key={btn}
+                      type="button"
+                      disabled={verifyingPin}
+                      onClick={() => handleKeypadPress(btn)}
+                      className={`h-12 sm:h-13 rounded-2xl font-black text-xl active:scale-90 transition-all duration-150 flex items-center justify-center shadow-xs cursor-pointer select-none disabled:opacity-50 ${
+                        isClear
+                          ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/70'
+                          : isDelete
+                          ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/70'
+                          : 'bg-gray-50 hover:bg-amber-50 text-gray-800 border border-gray-200/80 active:bg-amber-100'
+                      }`}
+                    >
+                      {isDelete ? (
+                        <Delete className="w-5 h-5 text-amber-900" />
+                      ) : isClear ? (
+                        <span className="text-base font-black">C</span>
+                      ) : (
+                        btn
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Submit Button */}
               <button
-                type="submit"
+                type="button"
                 disabled={pin.length !== 4 || verifyingPin}
-                className="w-full min-h-[50px] py-3.5 px-6 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-base shadow-lg shadow-amber-600/30 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer touch-manipulation select-none"
+                onClick={() => {
+                  triggerHaptic(40);
+                  handleVerifyPin();
+                }}
+                className="w-full py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-98 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2"
               >
-                {verifyingPin
-                  ? language === 'hi'
-                    ? 'सत्यापित हो रहा है...'
-                    : 'Verifying PIN...'
-                  : language === 'hi'
-                  ? 'मेनू खोलें'
-                  : 'Open Menu'}
+                {verifyingPin ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>
+                      {language === 'hi' ? 'सत्यापित हो रहा है...' : 'Verifying PIN...'}
+                    </span>
+                  </>
+                ) : (
+                  <span>
+                    {language === 'hi' ? 'मेनू खोलें' : 'Open Menu'}
+                  </span>
+                )}
               </button>
-            </form>
+            </div>
           )}
 
-          <p className="text-[11px] sm:text-xs text-gray-400 mt-5 leading-normal">
+          <p className="text-[11px] text-gray-400 mt-4 leading-normal">
             {language === 'hi'
-              ? 'गलत पिन या गलत टेबल? 4-अंकों का कोड पाने के लिए कैफे मैनेजर से संपर्क करें।'
-              : 'Wrong PIN or wrong table? Ask the cafe manager for the 4-digit code.'}
+              ? 'पिन के लिए अपने सर्वर या कैफे मैनेजर से संपर्क करें।'
+              : 'Ask your server or cafe manager for the 4-digit PIN.'}
           </p>
         </div>
       </div>
