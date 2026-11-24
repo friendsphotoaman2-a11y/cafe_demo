@@ -92,9 +92,9 @@ export function TableQRCodesView({ tables, cafeName, settings }: Props) {
       : tables.filter(t => t.id === selectedTableId);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Header and Bulk Action Bar (Hidden when printing) */}
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
@@ -114,7 +114,7 @@ export function TableQRCodesView({ tables, cafeName, settings }: Props) {
           <select
             value={selectedTableId}
             onChange={e => setSelectedTableId(e.target.value)}
-            className="bg-stone-800 border border-stone-700 text-stone-200 text-xs font-semibold rounded-xl px-3 py-2.5 outline-none focus:border-amber-500 cursor-pointer"
+            className="bg-stone-800 border border-stone-700 text-stone-200 text-base sm:text-xs font-semibold rounded-xl px-3 py-2 outline-none focus:border-amber-500 cursor-pointer"
           >
             <option value="ALL">All Tables ({tables.length})</option>
             {tables.map(t => (
@@ -127,7 +127,7 @@ export function TableQRCodesView({ tables, cafeName, settings }: Props) {
           {/* Copy all URLs button for NFC */}
           <button
             onClick={handleCopyAll}
-            className="px-3.5 py-2.5 rounded-xl border border-stone-700 bg-stone-800 hover:bg-stone-700 active:scale-95 text-stone-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none"
+            className="min-h-[40px] px-3.5 py-2 rounded-xl border border-stone-700 bg-stone-800 hover:bg-stone-700 active:scale-95 text-stone-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer select-none"
           >
             {copiedAll ? (
               <>
@@ -145,7 +145,7 @@ export function TableQRCodesView({ tables, cafeName, settings }: Props) {
           {/* Print Sheet Button */}
           <button
             onClick={handlePrintSheet}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 text-xs font-black transition flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer select-none"
+            className="min-h-[40px] px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 text-xs font-black transition flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer select-none"
           >
             <Printer className="w-4 h-4" />
             <span>Print Standee Sheet</span>
@@ -154,15 +154,16 @@ export function TableQRCodesView({ tables, cafeName, settings }: Props) {
       </div>
 
       {/* Grid of Standee Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 print:grid-cols-2 print:gap-4 print:p-0">
-        {filteredTables.map(table => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 print:grid-cols-2 print:gap-4 print:p-0">
+        {filteredTables.map((table, idx) => {
           const url = `${cleanDomain}/t/${table.table_code.toLowerCase()}`;
           const qrData = qrMap[table.id];
 
           return (
             <div
               key={table.id}
-              className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-3xl p-5 shadow-xl transition flex flex-col justify-between group print:border-2 print:border-dashed print:border-gray-400 print:bg-white print:p-4 print:shadow-none print:break-inside-avoid"
+              style={{ animationDelay: `${Math.min(idx * 35, 200)}ms` }}
+              className="bg-stone-900 border border-stone-800 hover:border-amber-500/40 rounded-3xl p-5 shadow-xl transition flex flex-col justify-between group animate-fade-in-up print:border-2 print:border-dashed print:border-gray-400 print:bg-white print:p-4 print:shadow-none print:break-inside-avoid"
             >
               <div>
                 {/* Standee Header */}

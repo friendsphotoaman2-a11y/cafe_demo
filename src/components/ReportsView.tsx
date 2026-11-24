@@ -78,7 +78,7 @@ export function ReportsView({ settings }: Props) {
   const sheetId = data?.google_sheet_id || settings.google_sheet_id || '1lqe2AlMhSUuXPcVIUBryfBUiL-us8r_5DzPDTwcCMUY';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Top Header & Range Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -86,13 +86,13 @@ export function ReportsView({ settings }: Props) {
             <TrendingUp className="w-5 h-5 text-amber-400" />
             <span>Sales Reports &amp; Analytics</span>
           </h2>
-          <p className="text-xs text-stone-400">
+          <p className="text-xs text-stone-400 mt-0.5">
             Daily sales breakdown, best-selling dishes, and table turnover from Supabase (last 30 days).
           </p>
         </div>
 
-        {/* Date Range Selector Pills */}
-        <div className="flex items-center gap-1.5 bg-stone-900 border border-stone-800 p-1 rounded-2xl flex-wrap">
+        {/* Date Range Selector Pills (Mobile scrollable) */}
+        <div className="flex items-center gap-1 bg-stone-900 border border-stone-800 p-1 rounded-2xl overflow-x-auto scrollbar-none max-w-full">
           {(
             [
               { id: 'today', label: 'Today' },
@@ -105,7 +105,7 @@ export function ReportsView({ settings }: Props) {
             <button
               key={p.id}
               onClick={() => setRange(p.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                 range === p.id
                   ? 'bg-amber-500 text-stone-950 font-black shadow-sm'
                   : 'text-stone-400 hover:text-white hover:bg-stone-800/60'
@@ -116,7 +116,7 @@ export function ReportsView({ settings }: Props) {
           ))}
           <button
             onClick={fetchReports}
-            className="p-1.5 text-stone-400 hover:text-amber-400 rounded-xl hover:bg-stone-800 transition cursor-pointer"
+            className="p-2 text-stone-400 hover:text-amber-400 rounded-xl hover:bg-stone-800 transition cursor-pointer shrink-0"
             title="Refresh Reports"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber-400' : ''}`} />
@@ -126,31 +126,33 @@ export function ReportsView({ settings }: Props) {
 
       {/* Custom Date Pickers */}
       {range === 'custom' && (
-        <div className="p-4 bg-stone-900/90 border border-stone-800 rounded-2xl flex flex-wrap items-center gap-3 text-xs">
+        <div className="p-4 bg-stone-900/90 border border-stone-800 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-3 text-xs animate-fade-in">
           <span className="text-stone-400 font-semibold flex items-center gap-1.5">
             <Calendar className="w-4 h-4 text-amber-400" /> Date Filter:
           </span>
-          <div className="flex items-center gap-2">
-            <label className="text-stone-400 text-[11px]">From:</label>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={e => setCustomFrom(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-stone-950 border border-stone-800 text-white font-mono text-xs focus:outline-hidden focus:border-amber-500"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-stone-400 text-[11px]">To:</label>
-            <input
-              type="date"
-              value={customTo}
-              onChange={e => setCustomTo(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl bg-stone-950 border border-stone-800 text-white font-mono text-xs focus:outline-hidden focus:border-amber-500"
-            />
+          <div className="grid grid-cols-2 sm:flex items-center gap-2 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+              <label className="text-stone-400 text-[11px]">From:</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={e => setCustomFrom(e.target.value)}
+                className="px-2.5 py-2 rounded-xl bg-stone-950 border border-stone-800 text-white font-mono text-sm sm:text-xs focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+              <label className="text-stone-400 text-[11px]">To:</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={e => setCustomTo(e.target.value)}
+                className="px-2.5 py-2 rounded-xl bg-stone-950 border border-stone-800 text-white font-mono text-sm sm:text-xs focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
           </div>
           <button
             onClick={fetchReports}
-            className="py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition cursor-pointer"
+            className="min-h-[38px] py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition cursor-pointer"
           >
             Apply
           </button>
@@ -196,71 +198,71 @@ export function ReportsView({ settings }: Props) {
       )}
 
       {/* 1. Daily Sales Summary Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Total Sales */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-sm relative overflow-hidden">
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden animate-fade-in-up">
           <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Total Sales</span>
+            <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Total Sales</span>
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <span className="text-3xl font-black font-mono text-white block">
+          <span className="text-2xl sm:text-3xl font-black font-mono text-white block">
             ₹{data?.summary.total_sales ?? 0}
           </span>
           <span className="text-[11px] text-emerald-400 flex items-center gap-1 mt-1 font-semibold">
-            <TrendingUp className="w-3 h-3" /> Net revenue in period
+            <TrendingUp className="w-3 h-3 shrink-0" /> Net revenue
           </span>
         </div>
 
         {/* Number of Bills */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-sm relative overflow-hidden">
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden animate-fade-in-up">
           <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Number of Bills</span>
+            <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Bills</span>
             <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
               <Receipt className="w-4 h-4" />
             </div>
           </div>
-          <span className="text-3xl font-black font-mono text-white block">
+          <span className="text-2xl sm:text-3xl font-black font-mono text-white block">
             {data?.summary.bills_count ?? 0}
           </span>
           <span className="text-[11px] text-stone-400 block mt-1">
-            Settled counter bills
+            Settled bills
           </span>
         </div>
 
         {/* Average Bill */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-sm relative overflow-hidden">
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden animate-fade-in-up">
           <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Average Bill</span>
+            <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Avg Bill</span>
             <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
               <Coffee className="w-4 h-4" />
             </div>
           </div>
-          <span className="text-3xl font-black font-mono text-white block">
+          <span className="text-2xl sm:text-3xl font-black font-mono text-white block">
             ₹{data?.summary.average_bill ?? 0}
           </span>
           <span className="text-[11px] text-purple-300 block mt-1">
-            Avg spend per table bill
+            Per table
           </span>
         </div>
 
         {/* Tax & Discount */}
-        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-5 shadow-sm relative overflow-hidden">
+        <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden animate-fade-in-up">
           <div className="flex items-center justify-between text-stone-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">GST Tax &amp; Loyalty</span>
+            <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">GST &amp; Loyalty</span>
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
               <Award className="w-4 h-4" />
             </div>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-bold font-mono text-emerald-400">
+          <div className="flex items-baseline gap-1.5 flex-wrap">
+            <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
               +₹{data?.summary.total_tax ?? 0}
             </span>
-            <span className="text-xs text-stone-500">GST</span>
+            <span className="text-[10px] text-stone-500">GST</span>
           </div>
           <span className="text-[11px] text-stone-400 block mt-1">
-            Discount given: ₹{data?.summary.total_discount ?? 0}
+            Disc: ₹{data?.summary.total_discount ?? 0}
           </span>
         </div>
       </div>
@@ -388,8 +390,8 @@ export function ReportsView({ settings }: Props) {
         </div>
       </div>
 
-      {/* 3. Daily Sales Breakdown Table */}
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-md space-y-4">
+      {/* 3. Daily Sales Breakdown Table (Mobile Cards + Desktop Table) */}
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-6 shadow-md space-y-4">
         <div className="flex items-center justify-between border-b border-stone-800 pb-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-amber-400" />
@@ -402,7 +404,34 @@ export function ReportsView({ settings }: Props) {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile Daily Cards */}
+        <div className="sm:hidden space-y-2.5">
+          {data?.daily_sales.map(day => (
+            <div
+              key={day.date}
+              className="p-3.5 rounded-2xl bg-stone-950/70 border border-stone-800 flex items-center justify-between"
+            >
+              <div>
+                <span className="font-mono font-bold text-xs text-white block">{day.date}</span>
+                <span className="text-[11px] text-stone-400">
+                  {day.day_label} • {day.bills_count} bills
+                </span>
+              </div>
+              <div className="text-right font-mono">
+                <span className="font-black text-sm text-amber-400 block">₹{day.total_sales}</span>
+                <span className="text-[10px] text-stone-500">Avg ₹{day.average_bill}</span>
+              </div>
+            </div>
+          ))}
+          {(!data?.daily_sales || data.daily_sales.length === 0) && (
+            <div className="py-8 text-center text-stone-500 text-xs">
+              No sales data available for this range.
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs text-stone-300">
             <thead className="bg-stone-950/80 text-stone-400 font-mono text-[11px] uppercase border-b border-stone-800">
               <tr>

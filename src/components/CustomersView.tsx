@@ -7,6 +7,10 @@ import {
   Download,
   Phone,
   FileSpreadsheet,
+  Users,
+  Award,
+  IndianRupee,
+  X,
 } from 'lucide-react';
 import { apiUrl } from '@/lib/base-path';
 
@@ -92,18 +96,21 @@ export function CustomersView() {
     document.body.removeChild(link);
   }
 
+  const regularCustomersCount = customers.filter(c => c.visit_count >= 3).length;
+  const totalCustomerSpend = customers.reduce((sum, c) => sum + (c.total_spent || 0), 0);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-black text-white tracking-tight">Customer Directory &amp; Loyalty</h2>
-            <span className="px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-500/30 text-[10px] font-bold font-mono">
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-500/30 text-[10px] font-bold font-mono">
               Google Sheets Synced
             </span>
           </div>
-          <p className="text-xs text-stone-400">
+          <p className="text-xs text-stone-400 mt-0.5">
             All registered cafe customers with visit counts, lifetime spend, and CSV export.
             {cacheAgeSec !== null && (
               <span className="ml-1 text-stone-500 font-mono">
@@ -113,12 +120,12 @@ export function CustomersView() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
             onClick={() => fetchCustomers(true)}
             disabled={refreshing || loading}
-            className="py-2 px-3 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-500/50 text-stone-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            className="min-h-[40px] py-2 px-3.5 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-500/50 text-stone-300 hover:text-white active:scale-95 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
             <span>Refresh Sheet</span>
@@ -128,7 +135,7 @@ export function CustomersView() {
             type="button"
             onClick={handleExportCSV}
             disabled={customers.length === 0}
-            className="py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-black flex items-center gap-1.5 shadow-md transition disabled:opacity-50 cursor-pointer"
+            className="min-h-[40px] py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-stone-950 text-xs font-black flex items-center gap-1.5 shadow-md transition disabled:opacity-50 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -136,89 +143,215 @@ export function CustomersView() {
         </div>
       </div>
 
+      {/* Quick KPI Summary Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-4 rounded-2xl bg-stone-900 border border-stone-800 flex items-center justify-between animate-fade-in-up">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-stone-400 block">
+              Customers Shown
+            </span>
+            <span className="text-2xl font-black font-mono text-white mt-0.5 block">
+              {customers.length}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <Users className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-stone-900 border border-stone-800 flex items-center justify-between animate-fade-in-up">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-stone-400 block">
+              Repeat Regulars (3+ Visits)
+            </span>
+            <span className="text-2xl font-black font-mono text-amber-400 mt-0.5 block">
+              {regularCustomersCount}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <Award className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-stone-900 border border-stone-800 flex items-center justify-between animate-fade-in-up">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-stone-400 block">
+              Combined Spend
+            </span>
+            <span className="text-2xl font-black font-mono text-emerald-400 mt-0.5 block">
+              ₹{totalCustomerSpend.toFixed(0)}
+            </span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <IndianRupee className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
       {/* Search Bar */}
       <div className="p-3.5 rounded-2xl bg-stone-900/90 border border-stone-800">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             placeholder="Search by 10-digit Phone or Customer Name..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
+            className="w-full pl-9 pr-9 py-2 text-base sm:text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-white cursor-pointer"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Error Message */}
       {errorMsg && (
-        <div className="p-3 bg-red-950/40 border border-red-500/40 rounded-xl text-xs text-red-300">
+        <div className="p-3.5 bg-red-950/40 border border-red-500/40 rounded-2xl text-xs text-red-300 animate-shake">
           {errorMsg}
         </div>
       )}
 
-      {/* Customers Table */}
-      <div className="rounded-2xl border border-stone-800 bg-stone-900/60 overflow-hidden shadow-lg">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-stone-800 text-[11px] text-stone-400 uppercase font-bold bg-stone-900/90">
-                <th className="py-2.5 px-3.5">Customer Name</th>
-                <th className="py-2.5 px-3 font-mono">Phone Number</th>
-                <th className="py-2.5 px-3">Total Visits</th>
-                <th className="py-2.5 px-3">First Visit</th>
-                <th className="py-2.5 px-3">Last Visit</th>
-                <th className="py-2.5 px-3.5 text-right">Lifetime Spend</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-800/50">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-stone-500">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
-                    <span>Loading customers from Google Sheets...</span>
-                  </td>
-                </tr>
-              ) : customers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-stone-500">
-                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="font-bold text-stone-400">No customer records found.</p>
-                    <p className="text-xs text-stone-600 mt-1">Customers are recorded when billing with phone numbers.</p>
-                  </td>
-                </tr>
-              ) : (
-                customers.map((c, idx) => (
-                  <tr key={c.phone || idx} className="hover:bg-stone-900/80 transition">
-                    <td className="py-3 px-3.5 font-bold text-white">
-                      {c.name}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-stone-300">
-                      <span className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-stone-500" />
-                        <span>{c.phone}</span>
+      {/* Customers Card Grid (Mobile) & Table (Desktop) */}
+      <div className="rounded-3xl border border-stone-800 bg-stone-900/60 overflow-hidden shadow-lg">
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {[1, 2, 3, 4].map(n => (
+              <div key={n} className="h-16 rounded-2xl animate-shimmer-dark border border-stone-800/60" />
+            ))}
+          </div>
+        ) : customers.length === 0 ? (
+          <div className="py-14 px-6 text-center text-stone-500">
+            <FileSpreadsheet className="w-10 h-10 mx-auto mb-2.5 opacity-30" />
+            <p className="font-bold text-sm text-stone-300">No customer records found.</p>
+            <p className="text-xs text-stone-500 mt-1">Customers are recorded when billing with phone numbers.</p>
+          </div>
+        ) : (
+          <>
+            {/* Mobile / Tablet Card View */}
+            <div className="md:hidden divide-y divide-stone-800/80">
+              {customers.map((c, idx) => (
+                <div
+                  key={c.phone || idx}
+                  style={{ animationDelay: `${Math.min(idx * 35, 200)}ms` }}
+                  className="p-4 space-y-2.5 animate-fade-in-up"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center font-black text-sm shrink-0">
+                        {(c.name || 'C').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-sm text-white truncate">{c.name}</h4>
+                        <a
+                          href={`tel:${c.phone}`}
+                          className="inline-flex items-center gap-1 font-mono text-xs text-stone-400 hover:text-amber-300 mt-0.5"
+                        >
+                          <Phone className="w-3 h-3" />
+                          <span>{c.phone}</span>
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="font-black text-emerald-400 font-mono text-base block">
+                        ₹{c.total_spent}
                       </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold font-mono text-[11px]">
+                      <span className="inline-block px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold font-mono text-[10px]">
                         {c.visit_count} {c.visit_count === 1 ? 'Visit' : 'Visits'}
                       </span>
-                    </td>
-                    <td className="py-3 px-3 text-stone-400 text-xs font-mono">
-                      {c.first_visit ? new Date(c.first_visit).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
-                    </td>
-                    <td className="py-3 px-3 text-stone-300 text-xs font-mono">
-                      {c.last_visit ? new Date(c.last_visit).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
-                    </td>
-                    <td className="py-3 px-3.5 text-right font-black text-emerald-400 font-mono text-sm">
-                      ₹{c.total_spent}
-                    </td>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] font-mono text-stone-500 pt-1">
+                    <span>
+                      First:{' '}
+                      {c.first_visit
+                        ? new Date(c.first_visit).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'N/A'}
+                    </span>
+                    <span className="text-stone-400">
+                      Last:{' '}
+                      {c.last_visit
+                        ? new Date(c.last_visit).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-stone-800 text-[11px] text-stone-400 uppercase font-bold bg-stone-900/90">
+                    <th className="py-3 px-4">Customer Name</th>
+                    <th className="py-3 px-3 font-mono">Phone Number</th>
+                    <th className="py-3 px-3">Total Visits</th>
+                    <th className="py-3 px-3">First Visit</th>
+                    <th className="py-3 px-3">Last Visit</th>
+                    <th className="py-3 px-4 text-right">Lifetime Spend</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-stone-800/50">
+                  {customers.map((c, idx) => (
+                    <tr key={c.phone || idx} className="hover:bg-stone-900/80 transition">
+                      <td className="py-3.5 px-4 font-bold text-white">{c.name}</td>
+                      <td className="py-3.5 px-3 font-mono text-stone-300">
+                        <span className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-stone-500" />
+                          <span>{c.phone}</span>
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold font-mono text-[11px]">
+                          {c.visit_count} {c.visit_count === 1 ? 'Visit' : 'Visits'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 text-stone-400 text-xs font-mono">
+                        {c.first_visit
+                          ? new Date(c.first_visit).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'N/A'}
+                      </td>
+                      <td className="py-3.5 px-3 text-stone-300 text-xs font-mono">
+                        {c.last_visit
+                          ? new Date(c.last_visit).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'N/A'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right font-black text-emerald-400 font-mono text-sm">
+                        ₹{c.total_spent}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

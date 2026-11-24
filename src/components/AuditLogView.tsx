@@ -14,6 +14,7 @@ import {
   Search,
   Clock,
   User,
+  X,
 } from 'lucide-react';
 import { ManagerSettings } from '@/types/database';
 import { AuditLogEntry, AuditAction } from '@/lib/audit-logger';
@@ -155,7 +156,7 @@ export function AuditLogView({ settings }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* Top Header & Google Sheet Link */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -163,7 +164,7 @@ export function AuditLogView({ settings }: Props) {
             <ShieldAlert className="w-5 h-5 text-amber-400" />
             <span>Audit Log (Read Only)</span>
           </h2>
-          <p className="text-xs text-stone-400">
+          <p className="text-xs text-stone-400 mt-0.5">
             Immutable system activity log: PIN generations, item cancellations, availability toggles, and price changes.
           </p>
         </div>
@@ -172,7 +173,7 @@ export function AuditLogView({ settings }: Props) {
           href={`https://docs.google.com/spreadsheets/d/${googleSheetId}`}
           target="_blank"
           rel="noreferrer"
-          className="py-2.5 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-200 hover:text-white font-bold text-xs flex items-center gap-2 border border-stone-800 shadow-md transition self-start sm:self-auto cursor-pointer"
+          className="min-h-[40px] py-2 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 active:scale-95 text-stone-200 hover:text-white font-bold text-xs flex items-center gap-2 border border-stone-800 shadow-md transition self-start sm:self-auto cursor-pointer"
         >
           <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
           <span>Google Sheet AuditLog Tab</span>
@@ -181,10 +182,10 @@ export function AuditLogView({ settings }: Props) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <button
           onClick={() => setActionFilter('ALL')}
-          className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
             actionFilter === 'ALL'
               ? 'bg-amber-500/10 border-amber-500 text-amber-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -199,7 +200,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('PIN_GENERATED')}
-          className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
             actionFilter === 'PIN_GENERATED'
               ? 'bg-amber-500/10 border-amber-500 text-amber-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -219,7 +220,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('ORDER_CANCELLED')}
-          className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
             actionFilter === 'ORDER_CANCELLED'
               ? 'bg-red-500/10 border-red-500 text-red-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -239,7 +240,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('AVAILABILITY_CHANGED')}
-          className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
             actionFilter === 'AVAILABILITY_CHANGED'
               ? 'bg-blue-500/10 border-blue-500 text-blue-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -259,7 +260,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('PRICE_CHANGED')}
-          className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+          className={`col-span-2 sm:col-span-1 p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
             actionFilter === 'PRICE_CHANGED'
               ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -279,7 +280,7 @@ export function AuditLogView({ settings }: Props) {
       </div>
 
       {/* Filter and Search Controls */}
-      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         {/* Search */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-stone-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -288,30 +289,39 @@ export function AuditLogView({ settings }: Props) {
             placeholder="Search audit records (title, reason, table, item, email)..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500"
+            className="w-full pl-10 pr-9 py-2 text-base sm:text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-white cursor-pointer"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        {/* Action Filter Selector */}
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-stone-500 shrink-0" />
+        {/* Responsive Action & Date Selectors */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          <Filter className="w-4 h-4 text-stone-500 shrink-0 hidden sm:block" />
           <select
             value={actionFilter}
             onChange={e => setActionFilter(e.target.value)}
-            className="px-3 py-2 text-xs rounded-xl bg-stone-950 border border-stone-800 text-stone-300 focus:outline-hidden focus:border-amber-500 cursor-pointer font-semibold"
+            className="flex-1 sm:flex-none px-3 py-2 text-base sm:text-xs rounded-xl bg-stone-950 border border-stone-800 text-stone-300 focus:outline-hidden focus:border-amber-500 cursor-pointer font-semibold"
           >
-            <option value="ALL">All Action Types</option>
+            <option value="ALL">All Actions</option>
             <option value="PIN_GENERATED">PIN Generation</option>
             <option value="ORDER_CANCELLED">Order Cancellations</option>
             <option value="AVAILABILITY_CHANGED">Availability Changes</option>
             <option value="PRICE_CHANGED">Price Changes</option>
           </select>
 
-          {/* Date Filter Selector */}
           <select
             value={dateFilter}
             onChange={e => setDateFilter(e.target.value)}
-            className="px-3 py-2 text-xs rounded-xl bg-stone-950 border border-stone-800 text-stone-300 focus:outline-hidden focus:border-amber-500 cursor-pointer font-semibold"
+            className="flex-1 sm:flex-none px-3 py-2 text-base sm:text-xs rounded-xl bg-stone-950 border border-stone-800 text-stone-300 focus:outline-hidden focus:border-amber-500 cursor-pointer font-semibold"
           >
             <option value="all">All Dates</option>
             <option value="today">Today</option>
@@ -322,7 +332,7 @@ export function AuditLogView({ settings }: Props) {
 
           <button
             onClick={fetchLogs}
-            className="p-2 text-stone-400 hover:text-amber-400 rounded-xl hover:bg-stone-800 transition cursor-pointer"
+            className="p-2.5 text-stone-400 hover:text-amber-400 rounded-xl bg-stone-950 border border-stone-800 hover:bg-stone-800 transition cursor-pointer shrink-0"
             title="Refresh Audit Logs"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
@@ -332,22 +342,30 @@ export function AuditLogView({ settings }: Props) {
 
       {/* Audit Log Entries List (Newest First) */}
       <div className="bg-stone-900 border border-stone-800 rounded-3xl overflow-hidden shadow-lg">
-        <div className="p-4 bg-stone-950/80 border-b border-stone-800 flex items-center justify-between text-xs text-stone-400 font-mono uppercase tracking-wider">
+        <div className="p-4 bg-stone-950/80 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-400 font-mono uppercase tracking-wider">
           <span>Activity Timeline ({filteredLogs.length} events)</span>
           <span>Newest First &bull; Permanent Record</span>
         </div>
 
         <div className="divide-y divide-stone-800/80">
-          {filteredLogs.map(item => {
-            const badge = getActionBadge(item.action);
-            const BadgeIcon = badge.icon;
-            const timeAgo = formatTimeAgo(item.timestamp);
+          {loading ? (
+            <div className="p-4 space-y-3">
+              {[1, 2, 3, 4].map(n => (
+                <div key={n} className="h-16 rounded-2xl animate-shimmer-dark border border-stone-800/60" />
+              ))}
+            </div>
+          ) : (
+            filteredLogs.map((item, idx) => {
+              const badge = getActionBadge(item.action);
+              const BadgeIcon = badge.icon;
+              const timeAgo = formatTimeAgo(item.timestamp);
 
-            return (
-              <div
-                key={item.id}
-                className="p-4 lg:p-5 hover:bg-stone-800/30 transition flex flex-col md:flex-row md:items-start justify-between gap-3 text-xs"
-              >
+              return (
+                <div
+                  key={item.id}
+                  style={{ animationDelay: `${Math.min(idx * 25, 180)}ms` }}
+                  className="p-4 lg:p-5 hover:bg-stone-800/30 transition flex flex-col md:flex-row md:items-start justify-between gap-3 text-xs animate-fade-in-up"
+                >
                 {/* Left: Action Icon + Title + Details */}
                 <div className="flex items-start gap-3 min-w-0">
                   <div
@@ -422,10 +440,11 @@ export function AuditLogView({ settings }: Props) {
                   {timeAgo && <span className="text-[10px] text-stone-500 block mt-0.5">{timeAgo}</span>}
                 </div>
               </div>
-            );
-          })}
+              );
+            })
+          )}
 
-          {filteredLogs.length === 0 && (
+          {!loading && filteredLogs.length === 0 && (
             <div className="p-12 text-center text-stone-500 space-y-2">
               <ShieldAlert className="w-10 h-10 mx-auto opacity-30 text-amber-500" />
               <p className="text-xs font-semibold text-stone-400">

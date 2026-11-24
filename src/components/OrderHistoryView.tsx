@@ -10,6 +10,7 @@ import {
   ChevronRight,
   FileSpreadsheet,
   Award,
+  X,
 } from 'lucide-react';
 import { apiUrl } from '@/lib/base-path';
 import { Bill } from '@/types/database';
@@ -172,17 +173,17 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       {/* Header with Title, Refresh, Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-black text-white tracking-tight">Order History &amp; Archives</h2>
-            <span className="px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-500/30 text-[10px] font-bold font-mono">
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-500/30 text-[10px] font-bold font-mono">
               Google Sheets Synced
             </span>
           </div>
-          <p className="text-xs text-stone-400">
+          <p className="text-xs text-stone-400 mt-0.5">
             Completed counter orders with date filters, pagination, thermal reprint, and CSV export.
             {cacheAgeSec !== null && (
               <span className="ml-1 text-stone-500 font-mono">
@@ -192,12 +193,12 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
             onClick={() => fetchOrderHistory(true)}
             disabled={refreshing || loading}
-            className="py-2 px-3 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-500/50 text-stone-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+            className="min-h-[40px] py-2 px-3.5 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-500/50 text-stone-300 hover:text-white active:scale-95 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
             <span>Refresh Sheet</span>
@@ -207,7 +208,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
             type="button"
             onClick={handleExportCSV}
             disabled={orders.length === 0}
-            className="py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-black flex items-center gap-1.5 shadow-md transition disabled:opacity-50 cursor-pointer"
+            className="min-h-[40px] py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-stone-950 text-xs font-black flex items-center gap-1.5 shadow-md transition disabled:opacity-50 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -215,92 +216,111 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="p-3.5 rounded-2xl bg-stone-900/90 border border-stone-800 flex flex-wrap items-center gap-2.5">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+      {/* Filter Bar (iOS safe input sizes & scrollable pills) */}
+      <div className="p-3.5 rounded-2xl bg-stone-900/90 border border-stone-800 flex flex-col lg:flex-row lg:items-center gap-2.5">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search Order ID or Phone..."
+            placeholder="Search Order ID, Phone, or Customer..."
             value={searchQuery}
             onChange={e => {
               setSearchQuery(e.target.value);
               setPage(1);
             }}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
+            className="w-full pl-9 pr-9 py-2 text-base sm:text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
           />
-        </div>
-
-        {/* Date Range Filter */}
-        <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800">
-          {(['all', 'today', '7days', '30days'] as const).map(range => (
+          {searchQuery && (
             <button
-              key={range}
               type="button"
               onClick={() => {
-                setDateRange(range);
+                setSearchQuery('');
                 setPage(1);
               }}
-              className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition cursor-pointer ${
-                dateRange === range
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
-                  : 'text-stone-400 hover:text-stone-200'
-              }`}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-stone-500 hover:text-white cursor-pointer"
+              aria-label="Clear search"
             >
-              {range === 'all'
-                ? 'All Time'
-                : range === 'today'
-                ? 'Today'
-                : range === '7days'
-                ? 'Last 7 Days'
-                : 'Last 30 Days'}
+              <X className="w-3.5 h-3.5" />
             </button>
-          ))}
+          )}
         </div>
 
-        {/* Table Filter */}
-        <input
-          type="text"
-          placeholder="Table # (e.g. 1)"
-          value={tableFilter}
-          onChange={e => {
-            setTableFilter(e.target.value);
-            setPage(1);
-          }}
-          className="w-28 py-1.5 px-3 text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
-        />
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800 overflow-x-auto scrollbar-none max-w-full">
+            {(['all', 'today', '7days', '30days'] as const).map(range => (
+              <button
+                key={range}
+                type="button"
+                onClick={() => {
+                  setDateRange(range);
+                  setPage(1);
+                }}
+                className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg whitespace-nowrap transition cursor-pointer ${
+                  dateRange === range
+                    ? 'bg-amber-500 text-stone-950 shadow-xs font-black'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                {range === 'all'
+                  ? 'All Time'
+                  : range === 'today'
+                  ? 'Today'
+                  : range === '7days'
+                  ? 'Last 7 Days'
+                  : 'Last 30 Days'}
+              </button>
+            ))}
+          </div>
+
+          {/* Table Filter */}
+          <input
+            type="text"
+            placeholder="Table #"
+            value={tableFilter}
+            onChange={e => {
+              setTableFilter(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-28 py-2 px-3 text-base sm:text-xs rounded-xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
+          />
+        </div>
       </div>
 
       {/* Error Banner */}
       {errorMsg && (
-        <div className="p-3 bg-red-950/40 border border-red-500/40 rounded-xl text-xs text-red-300">
+        <div className="p-3.5 bg-red-950/40 border border-red-500/40 rounded-2xl text-xs text-red-300 animate-shake">
           {errorMsg}
         </div>
       )}
 
       {/* Customer Insights Banner (When searching by phone/customer) */}
       {searchQuery.trim() && orders.length > 0 && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-stone-900 via-stone-900 to-amber-950/40 border border-amber-500/30 flex flex-wrap items-center justify-between gap-4 shadow-lg animate-in fade-in duration-200">
+        <div className="p-4 rounded-3xl bg-linear-to-r from-stone-900 via-stone-900 to-amber-950/40 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg animate-fade-in-up">
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-stone-950 flex items-center justify-center font-black text-lg shadow-md shadow-amber-500/20">
+            <div className="w-11 h-11 rounded-2xl bg-linear-to-br from-amber-500 to-amber-600 text-stone-950 flex items-center justify-center font-black text-lg shadow-md shadow-amber-500/20 shrink-0">
               {orders[0].customer_name ? orders[0].customer_name.charAt(0).toUpperCase() : 'C'}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-extrabold text-white">{orders[0].customer_name || 'Guest'}</span>
                 <span className="text-xs font-mono text-stone-400 bg-stone-950 px-2 py-0.5 rounded-md border border-stone-800">
                   {orders[0].phone || searchQuery}
                 </span>
               </div>
               <p className="text-xs text-stone-400 mt-0.5 flex items-center gap-1.5">
-                <Award className="w-3.5 h-3.5 text-amber-400" />
-                <span>Loyalty Customer • {Math.max(...orders.map(o => o.visit_no || 1), orders.length) >= 5 ? 'Loyalty Free Coffee Eligible' : `Visit ${Math.max(...orders.map(o => o.visit_no || 1), orders.length) % 5}/5 towards Free Coffee`}</span>
+                <Award className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>
+                  Loyalty Customer •{' '}
+                  {Math.max(...orders.map(o => o.visit_no || 1), orders.length) >= 5
+                    ? 'Loyalty Free Coffee Eligible'
+                    : `Visit ${Math.max(...orders.map(o => o.visit_no || 1), orders.length) % 5}/5 towards Free Coffee`}
+                </span>
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5">
             <div className="bg-stone-950/90 px-4 py-2 rounded-xl border border-stone-800 text-center">
               <span className="text-[10px] text-stone-400 uppercase font-bold block">Total Visits</span>
               <span className="text-base font-black text-amber-400 font-mono">
@@ -314,7 +334,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
               </span>
             </div>
             {orders.filter(o => o.free_visit === 'YES').length > 0 && (
-              <div className="bg-emerald-950/60 px-4 py-2 rounded-xl border border-emerald-500/30 text-center">
+              <div className="col-span-2 sm:col-span-1 bg-emerald-950/60 px-4 py-2 rounded-xl border border-emerald-500/30 text-center">
                 <span className="text-[10px] text-emerald-300 uppercase font-bold block">Free Coffees</span>
                 <span className="text-base font-black text-emerald-300 font-mono">
                   {orders.filter(o => o.free_visit === 'YES').length} ☕
@@ -325,106 +345,146 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
         </div>
       )}
 
-      {/* Orders Table */}
-      <div className="rounded-2xl border border-stone-800 bg-stone-900/60 overflow-hidden shadow-lg">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-stone-800 text-[11px] text-stone-400 uppercase font-bold bg-stone-900/90">
-                <th className="py-2.5 px-3.5 font-mono">Order ID</th>
-                <th className="py-2.5 px-3">Date &amp; Time</th>
-                <th className="py-2.5 px-3">Table</th>
-                <th className="py-2.5 px-3">Customer</th>
-                <th className="py-2.5 px-3">Phone</th>
-                <th className="py-2.5 px-3">Visit #</th>
-                <th className="py-2.5 px-3">Items</th>
-                <th className="py-2.5 px-3">Subtotal</th>
-                <th className="py-2.5 px-3">GST</th>
-                <th className="py-2.5 px-3">Total</th>
-                <th className="py-2.5 px-3">Status</th>
-                <th className="py-2.5 px-3.5 text-right">Reprint</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-800/50 font-mono">
-              {loading ? (
-                <tr>
-                  <td colSpan={12} className="py-12 text-center text-stone-500 font-sans">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
-                    <span>Loading orders from Google Sheets...</span>
-                  </td>
-                </tr>
-              ) : orders.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="py-12 text-center text-stone-500 font-sans">
-                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="font-bold text-stone-400">No completed orders found.</p>
-                    <p className="text-xs text-stone-600 mt-1">Orders sync to Google Sheets when bills are settled.</p>
-                  </td>
-                </tr>
-              ) : (
-                orders.map((ord, idx) => (
-                  <tr key={ord.order_id || idx} className="hover:bg-stone-900/80 transition">
-                    <td className="py-2.5 px-3.5 font-bold text-amber-300">
-                      {ord.order_id}
-                    </td>
-                    <td className="py-2.5 px-3 text-stone-300 whitespace-nowrap font-sans text-xs">
-                      {ord.date} {ord.time}
-                    </td>
-                    <td className="py-2.5 px-3 text-stone-300 font-sans">
-                      {ord.table}
-                    </td>
-                    <td className="py-2.5 px-3 text-white font-sans font-medium">
-                      {ord.customer_name || 'Guest'}
-                    </td>
-                    <td className="py-2.5 px-3 text-stone-400">
-                      {ord.phone || 'N/A'}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-black font-mono">
-                        <span>Visit #{ord.visit_no || 1}</span>
-                        {ord.free_visit === 'YES' && (
-                          <span className="text-[10px] text-emerald-400 font-extrabold ml-1">☕ FREE</span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-stone-300 font-sans max-w-[180px] truncate" title={ord.items}>
-                      {ord.items || 'Items recorded'}
-                    </td>
-                    <td className="py-2.5 px-3 text-stone-400">
-                      ₹{ord.subtotal}
-                    </td>
-                    <td className="py-2.5 px-3 text-stone-400">
-                      ₹{ord.tax}
-                    </td>
-                    <td className="py-2.5 px-3 font-black text-white whitespace-nowrap">
-                      ₹{ord.total}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
-                        {ord.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right whitespace-nowrap font-sans">
-                      <button
-                        type="button"
-                        onClick={() => handleReprint(ord)}
-                        className="py-1 px-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                        title="Reprint Invoice"
-                      >
-                        <Receipt className="w-3.5 h-3.5" />
-                        <span>Reprint</span>
-                      </button>
-                    </td>
+      {/* Orders List / Table Container */}
+      <div className="rounded-3xl border border-stone-800 bg-stone-900/60 overflow-hidden shadow-lg">
+        {/* Loading Shimmer State */}
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {[1, 2, 3, 4].map(n => (
+              <div key={n} className="h-16 rounded-2xl animate-shimmer-dark border border-stone-800/60" />
+            ))}
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="py-14 px-6 text-center text-stone-500">
+            <FileSpreadsheet className="w-10 h-10 mx-auto mb-2.5 opacity-30" />
+            <p className="font-bold text-sm text-stone-300">No completed orders found.</p>
+            <p className="text-xs text-stone-500 mt-1">Orders sync to Google Sheets when bills are settled.</p>
+          </div>
+        ) : (
+          <>
+            {/* Mobile & Tablet Card View (No cramped horizontal scroll) */}
+            <div className="lg:hidden divide-y divide-stone-800/80">
+              {orders.map((ord, idx) => (
+                <div
+                  key={ord.order_id || idx}
+                  style={{ animationDelay: `${Math.min(idx * 35, 200)}ms` }}
+                  className="p-4 space-y-3 animate-fade-in-up"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-black text-sm text-amber-300">{ord.order_id}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                          {ord.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-400 mt-0.5">
+                        {ord.date} {ord.time} • <strong className="text-stone-300">{ord.table}</strong>
+                      </p>
+                    </div>
+                    <span className="font-mono font-black text-base text-white shrink-0">₹{ord.total}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-stone-950/70 rounded-xl p-2.5 border border-stone-800/70 text-xs">
+                    <div>
+                      <span className="font-bold text-white block">{ord.customer_name || 'Guest'}</span>
+                      <span className="font-mono text-[11px] text-stone-400">{ord.phone || 'N/A'}</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px] font-black font-mono">
+                      <span>Visit #{ord.visit_no || 1}</span>
+                      {ord.free_visit === 'YES' && <span className="text-emerald-400 ml-0.5">☕ FREE</span>}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-stone-300 line-clamp-2">{ord.items || 'Items recorded'}</p>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] font-mono text-stone-500">
+                      Sub: ₹{ord.subtotal} • GST: ₹{ord.tax}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleReprint(ord)}
+                      className="min-h-[38px] py-1.5 px-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>Reprint</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Full Table View */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-stone-800 text-[11px] text-stone-400 uppercase font-bold bg-stone-900/90">
+                    <th className="py-3 px-3.5 font-mono">Order ID</th>
+                    <th className="py-3 px-3">Date &amp; Time</th>
+                    <th className="py-3 px-3">Table</th>
+                    <th className="py-3 px-3">Customer</th>
+                    <th className="py-3 px-3">Phone</th>
+                    <th className="py-3 px-3">Visit #</th>
+                    <th className="py-3 px-3">Items</th>
+                    <th className="py-3 px-3">Subtotal</th>
+                    <th className="py-3 px-3">GST</th>
+                    <th className="py-3 px-3">Total</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3.5 text-right">Reprint</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-stone-800/50 font-mono">
+                  {orders.map((ord, idx) => (
+                    <tr key={ord.order_id || idx} className="hover:bg-stone-900/80 transition">
+                      <td className="py-3 px-3.5 font-bold text-amber-300">{ord.order_id}</td>
+                      <td className="py-3 px-3 text-stone-300 whitespace-nowrap font-sans text-xs">
+                        {ord.date} {ord.time}
+                      </td>
+                      <td className="py-3 px-3 text-stone-300 font-sans">{ord.table}</td>
+                      <td className="py-3 px-3 text-white font-sans font-medium">{ord.customer_name || 'Guest'}</td>
+                      <td className="py-3 px-3 text-stone-400">{ord.phone || 'N/A'}</td>
+                      <td className="py-3 px-3 font-sans">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-black font-mono">
+                          <span>Visit #{ord.visit_no || 1}</span>
+                          {ord.free_visit === 'YES' && (
+                            <span className="text-[10px] text-emerald-400 font-extrabold ml-1">☕ FREE</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-stone-300 font-sans max-w-[180px] truncate" title={ord.items}>
+                        {ord.items || 'Items recorded'}
+                      </td>
+                      <td className="py-3 px-3 text-stone-400">₹{ord.subtotal}</td>
+                      <td className="py-3 px-3 text-stone-400">₹{ord.tax}</td>
+                      <td className="py-3 px-3 font-black text-white whitespace-nowrap">₹{ord.total}</td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                          {ord.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3.5 text-right whitespace-nowrap font-sans">
+                        <button
+                          type="button"
+                          onClick={() => handleReprint(ord)}
+                          className="py-1.5 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                          title="Reprint Invoice"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                          <span>Reprint</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div className="py-3 px-4 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400 bg-stone-950/40">
+          <div className="py-3 px-4 border-t border-stone-800 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-400 bg-stone-950/40">
             <span>
               Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} orders
             </span>
@@ -434,13 +494,13 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                 type="button"
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="p-1.5 rounded-lg bg-stone-900 border border-stone-800 disabled:opacity-40 text-stone-300 hover:text-white cursor-pointer"
+                className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl bg-stone-900 border border-stone-800 disabled:opacity-40 text-stone-300 hover:text-white cursor-pointer"
                 title="Previous Page"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <span className="px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800 text-stone-200 font-mono text-[11px]">
+              <span className="px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 text-stone-200 font-mono text-[11px]">
                 {page} / {totalPages}
               </span>
 
@@ -448,7 +508,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                 type="button"
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="p-1.5 rounded-lg bg-stone-900 border border-stone-800 disabled:opacity-40 text-stone-300 hover:text-white cursor-pointer"
+                className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl bg-stone-900 border border-stone-800 disabled:opacity-40 text-stone-300 hover:text-white cursor-pointer"
                 title="Next Page"
               >
                 <ChevronRight className="w-4 h-4" />

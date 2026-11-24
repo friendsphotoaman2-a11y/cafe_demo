@@ -266,12 +266,12 @@ export default function KitchenPage() {
   // ---------------------------------------------------------------------------
   if (!loading && settings && !settings.kitchen_screen_enabled) {
     return (
-      <div className="min-h-screen bg-stone-950 text-white flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-20 h-20 rounded-3xl bg-stone-900 border border-stone-800 flex items-center justify-center mb-6 shadow-2xl">
+      <div className="min-h-[100dvh] bg-stone-950 text-white flex flex-col items-center justify-center p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center animate-fade-in">
+        <div className="w-20 h-20 rounded-3xl bg-stone-900 border border-stone-800 flex items-center justify-center mb-6 shadow-2xl animate-scale-up">
           <ChefHat className="w-10 h-10 text-stone-500" />
         </div>
 
-        <h1 className="text-3xl font-black mb-3 text-white tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-black mb-3 text-white tracking-tight">
           Kitchen screen is disabled
         </h1>
 
@@ -280,17 +280,17 @@ export default function KitchenPage() {
           You can re-enable it anytime from the Manager Settings tab.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
           <Link
             href="/manager?tab=settings"
-            className="flex items-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 font-bold text-xs rounded-2xl transition shadow-lg shadow-amber-600/20 active:scale-98"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 font-bold text-xs rounded-2xl transition shadow-lg shadow-amber-600/20 active:scale-95 touch-manipulation"
           >
             <Sliders className="w-4 h-4" />
             <span>Enable in Manager Settings</span>
           </Link>
           <Link
             href="/manager?tab=orders"
-            className="flex items-center gap-2 px-6 py-3 bg-stone-900 hover:bg-stone-800 border border-stone-800 font-bold text-xs rounded-2xl transition text-stone-300"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-stone-900 hover:bg-stone-800 border border-stone-800 font-bold text-xs rounded-2xl transition text-stone-300 active:scale-95 touch-manipulation"
           >
             <UtensilsCrossed className="w-4 h-4" />
             <span>View Manager Orders</span>
@@ -306,39 +306,42 @@ export default function KitchenPage() {
   const readyOrders = orders.filter(o => o.status === 'READY');
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans select-none">
+    <div className="min-h-[100dvh] bg-stone-950 text-stone-100 flex flex-col font-sans select-none pb-[env(safe-area-inset-bottom)] animate-fade-in">
       {/* ======================================================== */}
       {/* 1. KDS TOP HEADER BAR                                    */}
       {/* ======================================================== */}
-      <header className="bg-stone-900/90 backdrop-blur-md border-b border-stone-800 px-4 md:px-6 py-3 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-3">
+      <header className="bg-stone-900/95 backdrop-blur-md border-b border-stone-800 px-3 sm:px-4 md:px-6 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between gap-2 sticky top-0 z-30">
+        <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href="/manager"
-            className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white transition"
+            className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white transition shrink-0 active:scale-95 touch-manipulation"
             title="Return to Manager Hub"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
               <ChefHat className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-black tracking-tight text-white">
-                  {settings?.cafe_name || 'Cafe'} — Kitchen Screen
+                <h1 className="text-sm sm:text-base font-black tracking-tight text-white truncate">
+                  {settings?.cafe_name || 'Cafe'} — Kitchen
                 </h1>
-                <span className="hidden sm:inline-flex text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <span className="hidden sm:inline-flex text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
                   Live KDS
                 </span>
               </div>
+              <span className="md:hidden text-[10px] text-amber-400 font-bold block">
+                {orders.length} Active {orders.length === 1 ? 'Ticket' : 'Tickets'} {currentTime ? `• ${currentTime}` : ''}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Center: Live Clock & Active Badge */}
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden md:flex items-center gap-3 shrink-0">
           <div className="px-3 py-1 rounded-xl bg-stone-950 border border-stone-800 font-mono text-xs text-amber-300 font-bold tracking-widest flex items-center gap-1.5 shadow-inner">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
             <span>{currentTime || 'IST TIME'}</span>
@@ -349,30 +352,30 @@ export default function KitchenPage() {
         </div>
 
         {/* Right Tools: Sound, Fullscreen, Refresh */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {!soundUnlocked ? (
             <button
               onClick={handleUnlockSound}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 animate-pulse transition cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 animate-pulse transition cursor-pointer active:scale-95 touch-manipulation"
               title="Tap once to enable audio bell chime for incoming orders"
             >
-              <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+              <VolumeX className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-amber-400" />
               <span className="hidden sm:inline">Sound OFF</span>
             </button>
           ) : (
             <button
               onClick={() => playWaiterCallChime()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition cursor-pointer active:scale-95 touch-manipulation"
               title="Audio active - click to test chime"
             >
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+              <Volume2 className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Sound ON</span>
             </button>
           )}
 
           <button
             onClick={toggleFullscreen}
-            className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer"
+            className="hidden sm:inline-flex p-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer"
             title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen (KDS TV mode)'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -380,10 +383,10 @@ export default function KitchenPage() {
 
           <button
             onClick={fetchKitchenData}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-semibold transition cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-semibold transition cursor-pointer active:scale-95 touch-manipulation"
             title="Refresh active tickets"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
@@ -392,11 +395,11 @@ export default function KitchenPage() {
       {/* ======================================================== */}
       {/* 2. THREE COLUMN LIVE KITCHEN BOARD                       */}
       {/* ======================================================== */}
-      <main className="flex-1 p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6 overflow-hidden">
+      <main className="flex-1 p-3 sm:p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         {/* ------------------------------------------------------ */}
         {/* COLUMN 1: NEW / PENDING ORDERS (Waiting to Cook)       */}
         {/* ------------------------------------------------------ */}
-        <div className="flex flex-col bg-stone-900/60 border border-stone-800 rounded-3xl p-4 min-h-[500px]">
+        <div className="flex flex-col bg-stone-900/60 border border-stone-800 rounded-3xl p-3.5 sm:p-4 min-h-[240px] md:min-h-[500px]">
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-800">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
@@ -421,7 +424,7 @@ export default function KitchenPage() {
               return (
                 <div
                   key={order.id}
-                  className="bg-stone-900 border-2 border-red-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between transition-all hover:border-red-500"
+                  className="bg-stone-900 border-2 border-red-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between transition-all hover:border-red-500 animate-fade-in-up"
                 >
                   <div>
                     {/* Ticket Header */}
@@ -480,7 +483,7 @@ export default function KitchenPage() {
                   <button
                     onClick={() => handleAdvanceStatus(order.id, 'PREPARING')}
                     disabled={updatingOrderId === order.id}
-                    className="w-full mt-2 py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 active:scale-98 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-600/20 transition cursor-pointer disabled:opacity-50"
+                    className="w-full mt-2 py-3 px-4 rounded-xl bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-600/20 transition cursor-pointer disabled:opacity-50 touch-manipulation"
                   >
                     <Flame className="w-4 h-4" />
                     <span>Preparing (Start Cooking)</span>
@@ -490,7 +493,7 @@ export default function KitchenPage() {
             })}
 
             {pendingOrders.length === 0 && (
-              <div className="text-center py-16 px-4">
+              <div className="text-center py-10 md:py-16 px-4">
                 <ChefHat className="w-10 h-10 text-stone-700 mx-auto mb-2 opacity-50" />
                 <p className="text-xs text-stone-500 font-medium">
                   No new pending tickets.
@@ -503,7 +506,7 @@ export default function KitchenPage() {
         {/* ------------------------------------------------------ */}
         {/* COLUMN 2: PREPARING / COOKING IN PROGRESS              */}
         {/* ------------------------------------------------------ */}
-        <div className="flex flex-col bg-stone-900/60 border border-stone-800 rounded-3xl p-4 min-h-[500px]">
+        <div className="flex flex-col bg-stone-900/60 border border-stone-800 rounded-3xl p-3.5 sm:p-4 min-h-[240px] md:min-h-[500px]">
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-800">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-orange-500 animate-pulse" />
@@ -528,7 +531,7 @@ export default function KitchenPage() {
               return (
                 <div
                   key={order.id}
-                  className="bg-stone-900 border-2 border-orange-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between transition-all hover:border-orange-500"
+                  className="bg-stone-900 border-2 border-orange-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between transition-all hover:border-orange-500 animate-fade-in-up"
                 >
                   <div>
                     {/* Ticket Header */}
@@ -585,7 +588,7 @@ export default function KitchenPage() {
                   <button
                     onClick={() => handleAdvanceStatus(order.id, 'READY')}
                     disabled={updatingOrderId === order.id}
-                    className="w-full mt-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition cursor-pointer disabled:opacity-50"
+                    className="w-full mt-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition cursor-pointer disabled:opacity-50 touch-manipulation"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Ready (Food Plated)</span>
@@ -595,7 +598,7 @@ export default function KitchenPage() {
             })}
 
             {preparingOrders.length === 0 && (
-              <div className="text-center py-16 px-4">
+              <div className="text-center py-10 md:py-16 px-4">
                 <Flame className="w-10 h-10 text-stone-700 mx-auto mb-2 opacity-50" />
                 <p className="text-xs text-stone-500 font-medium">
                   No orders cooking right now.
@@ -608,7 +611,7 @@ export default function KitchenPage() {
         {/* ------------------------------------------------------ */}
         {/* COLUMN 3: READY TO SERVE (Waiting for Waitstaff)       */}
         {/* ------------------------------------------------------ */}
-        <div className="flex flex-col bg-stone-900/60 border border-stone-800 rounded-3xl p-4 min-h-[500px]">
+        <div className="flex flex-col bg-stone-900/60 border border-stone-800 rounded-3xl p-3.5 sm:p-4 min-h-[240px] md:min-h-[500px]">
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-800">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-blue-500" />
@@ -630,7 +633,7 @@ export default function KitchenPage() {
               return (
                 <div
                   key={order.id}
-                  className="bg-stone-900 border-2 border-blue-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between transition-all hover:border-blue-500"
+                  className="bg-stone-900 border-2 border-blue-500/50 rounded-2xl p-4 shadow-xl flex flex-col justify-between transition-all hover:border-blue-500 animate-fade-in-up"
                 >
                   <div>
                     {/* Ticket Header */}
@@ -668,7 +671,7 @@ export default function KitchenPage() {
                   <button
                     onClick={() => handleAdvanceStatus(order.id, 'SERVED')}
                     disabled={updatingOrderId === order.id}
-                    className="w-full mt-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition cursor-pointer disabled:opacity-50"
+                    className="w-full mt-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition cursor-pointer disabled:opacity-50 touch-manipulation"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Mark as Served</span>
@@ -678,7 +681,7 @@ export default function KitchenPage() {
             })}
 
             {readyOrders.length === 0 && (
-              <div className="text-center py-16 px-4">
+              <div className="text-center py-10 md:py-16 px-4">
                 <CheckCircle2 className="w-10 h-10 text-stone-700 mx-auto mb-2 opacity-50" />
                 <p className="text-xs text-stone-500 font-medium">
                   No orders waiting to be served.

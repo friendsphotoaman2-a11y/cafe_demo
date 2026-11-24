@@ -146,8 +146,14 @@ export function MenuItemModal({ isOpen, item, categories, onClose, onSaved }: Pr
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs overflow-y-auto animate-in fade-in">
-      <div className="w-full max-w-lg bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-2xl space-y-4 my-8">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-stone-950/80 backdrop-blur-xs overflow-y-auto animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg bg-stone-900 border border-stone-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl space-y-4 sm:my-8 max-h-[92dvh] overflow-y-auto animate-slide-up sm:animate-scale-up"
+      >
         <div className="flex items-center justify-between pb-3 border-b border-stone-800">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">

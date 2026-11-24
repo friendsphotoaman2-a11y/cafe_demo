@@ -132,11 +132,11 @@ export function TableDetailsPanel({
       {/* Backdrop */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-stone-950/70 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-stone-950/75 backdrop-blur-xs transition-opacity animate-fade-in"
       />
 
       {/* Slide-over Drawer */}
-      <aside className="relative z-10 w-full max-w-md sm:max-w-lg bg-stone-900 border-l border-stone-800 shadow-2xl flex flex-col h-full overflow-hidden animate-in slide-in-from-right duration-200">
+      <aside className="relative z-10 w-full max-w-md sm:max-w-lg bg-stone-900 border-l border-stone-800 shadow-2xl flex flex-col h-[100dvh] overflow-hidden animate-slide-in-right pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
         <div className="p-5 border-b border-stone-800 bg-stone-950/80 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -321,7 +321,7 @@ export function TableDetailsPanel({
 
           {/* Confirm Close Session Dialog */}
           {confirmCloseOpen && (
-            <div className="p-4 bg-red-950/90 border border-red-700 rounded-2xl space-y-3 animate-in fade-in">
+            <div className="p-4 bg-red-950/90 border border-red-700 rounded-2xl space-y-3 animate-fade-in">
               <div className="flex items-start gap-2.5">
                 <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                 <div>

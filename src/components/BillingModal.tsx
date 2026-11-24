@@ -353,8 +353,14 @@ export function BillingModal({
   const loyaltyN = settings.loyalty_every_n_visits || 5;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-lg rounded-3xl bg-stone-900 border border-stone-800 text-stone-100 shadow-2xl flex flex-col overflow-hidden max-h-[92vh]">
+    <div
+      onClick={() => !submitting && onClose()}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 sm:p-4 backdrop-blur-xs animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-stone-900 border border-stone-800 text-stone-100 shadow-2xl flex flex-col overflow-hidden max-h-[92dvh] pb-[env(safe-area-inset-bottom)] animate-slide-up sm:animate-scale-up"
+      >
         {/* Header */}
         <div className="px-6 py-4 bg-amber-600 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">

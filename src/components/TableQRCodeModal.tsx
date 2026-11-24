@@ -48,8 +48,14 @@ export function TableQRCodeModal({ table, isOpen, onClose, cafeName }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl text-center">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xs animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl text-center animate-scale-up"
+      >
         <div className="flex justify-end">
           <button
             onClick={onClose}

@@ -79,6 +79,8 @@ import {
   HardDrive,
   Lock,
   Unlock,
+  Menu,
+  LayoutGrid,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -87,6 +89,7 @@ type TabType = 'tables' | 'orders' | 'menu' | 'billing' | 'history' | 'customers
 export default function ManagerDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('tables');
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [managerEmail, setManagerEmail] = useState<string | null>(null);
 
   // Core Data
@@ -978,16 +981,18 @@ export default function ManagerDashboard() {
     { id: 'settings' as TabType, label: 'Settings', icon: Sliders },
   ];
 
+  const activeNavItem = navItems.find(n => n.id === activeTab);
+
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col md:flex-row font-sans selection:bg-amber-500 selection:text-stone-950">
+    <div className="min-h-[100dvh] bg-stone-950 text-stone-100 flex flex-col md:flex-row font-sans selection:bg-amber-500 selection:text-stone-950">
       {/* ======================================================== */}
       {/* 1. DESKTOP / TABLET SIDEBAR                              */}
       {/* ======================================================== */}
-      <aside className="hidden md:flex flex-col justify-between w-20 lg:w-64 bg-stone-950 border-r border-stone-800 shrink-0 sticky top-0 h-screen z-30 transition-all">
-        <div>
+      <aside className="hidden md:flex flex-col justify-between w-20 lg:w-64 bg-stone-950 border-r border-stone-800/90 shrink-0 sticky top-0 h-[100dvh] z-30 transition-all">
+        <div className="flex flex-col flex-1 min-h-0">
           {/* Logo & Cafe Header */}
-          <div className="p-4 lg:p-5 border-b border-stone-800 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-400 text-stone-950 flex items-center justify-center font-black text-xl shadow-lg shadow-amber-500/20 shrink-0">
+          <div className="p-4 lg:p-5 border-b border-stone-800/90 flex items-center gap-3 shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-linear-to-tr from-amber-600 to-amber-400 text-stone-950 flex items-center justify-center font-black text-xl shadow-lg shadow-amber-500/20 shrink-0">
               ☕
             </div>
             <div className="hidden lg:block overflow-hidden">
@@ -1001,8 +1006,8 @@ export default function ManagerDashboard() {
             </div>
           </div>
 
-          {/* 6 Tab Navigation Links */}
-          <nav className="p-2 lg:p-3 space-y-1.5">
+          {/* Scrollable 10-Section Navigation Links */}
+          <nav className="flex-1 overflow-y-auto scrollbar-none p-2 lg:p-3 space-y-1">
             {navItems.map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -1010,18 +1015,18 @@ export default function ManagerDashboard() {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`w-full flex items-center justify-center lg:justify-start gap-3 px-3 py-2.5 lg:py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer active:scale-98 ${
                     isActive
-                      ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-500/20 font-extrabold scale-[1.02]'
+                      ? 'bg-linear-to-r from-amber-500 to-amber-400 text-stone-950 shadow-md shadow-amber-500/25 font-black'
                       : 'text-stone-400 hover:text-stone-100 hover:bg-stone-900'
                   }`}
                   title={item.label}
                 >
-                  <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-stone-950' : 'text-stone-400'}`} />
-                  <span className="hidden lg:inline grow text-left">{item.label}</span>
+                  <Icon className={`w-5 h-5 shrink-0 transition-transform ${isActive ? 'text-stone-950 scale-105' : 'text-stone-400'}`} />
+                  <span className="hidden lg:inline grow text-left truncate">{item.label}</span>
                   {item.badge !== undefined && item.badge > 0 && (
                     <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                      className={`hidden lg:inline-block text-[10px] font-mono px-2 py-0.5 rounded-full ${
                         isActive
                           ? 'bg-stone-950 text-amber-300 font-bold'
                           : 'bg-stone-800 text-amber-400 border border-amber-900/40'
@@ -1037,7 +1042,7 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3 lg:p-4 border-t border-stone-800/80 space-y-2">
+        <div className="p-3 lg:p-4 border-t border-stone-800/80 space-y-2 shrink-0 bg-stone-950">
           {settings.kitchen_screen_enabled && (
             <Link
               href="/kitchen"
@@ -1068,63 +1073,171 @@ export default function ManagerDashboard() {
       </aside>
 
       {/* ======================================================== */}
+      {/* 1B. MOBILE / iOS SLIDE-OUT NAVIGATION DRAWER             */}
+      {/* ======================================================== */}
+      {mobileDrawerOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div
+            onClick={() => setMobileDrawerOpen(false)}
+            className="fixed inset-0 bg-black/70 backdrop-blur-xs animate-fade-in"
+          />
+          <aside className="relative z-10 w-72 max-w-[82vw] h-[100dvh] bg-stone-950 border-r border-stone-800 flex flex-col justify-between shadow-2xl animate-slide-in-left pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+            <div className="flex flex-col flex-1 min-h-0">
+              <div className="p-4 border-b border-stone-800 flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-2xl bg-linear-to-tr from-amber-600 to-amber-400 text-stone-950 flex items-center justify-center font-black text-base shrink-0">
+                    ☕
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="font-black text-sm text-white truncate">{settings.cafe_name}</h2>
+                    <span className="text-[10px] text-amber-400 font-mono">All 10 Sections</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileDrawerOpen(false)}
+                  className="p-2 rounded-xl bg-stone-900 text-stone-400 hover:text-white cursor-pointer"
+                  aria-label="Close navigation menu"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <nav className="flex-1 overflow-y-auto scrollbar-none p-3 space-y-1">
+                {navItems.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setMobileDrawerOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer active:scale-98 ${
+                        isActive
+                          ? 'bg-linear-to-r from-amber-500 to-amber-400 text-stone-950 font-black shadow-md shadow-amber-500/20'
+                          : 'text-stone-300 hover:bg-stone-900'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-stone-950' : 'text-amber-400/80'}`} />
+                      <span className="grow text-left">{item.label}</span>
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                            isActive ? 'bg-stone-950 text-amber-300 font-bold' : 'bg-stone-800 text-amber-400'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            <div className="p-3 border-t border-stone-800 space-y-2 bg-stone-950">
+              {settings.kitchen_screen_enabled && (
+                <Link
+                  href="/kitchen"
+                  onClick={() => setMobileDrawerOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-stone-900 text-amber-300 text-xs font-bold border border-amber-900/40"
+                >
+                  <ChefHat className="w-4 h-4 text-amber-400" />
+                  <span>Open Kitchen Screen</span>
+                </Link>
+              )}
+
+              <div className="px-3 py-2 rounded-xl bg-stone-900/70 border border-stone-800 text-[11px] text-stone-400 truncate">
+                <span className="block text-[9px] uppercase tracking-wider text-stone-500 font-bold">Signed in as</span>
+                <span className="font-mono text-stone-200 truncate block">{managerEmail}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-red-400 bg-red-950/20 hover:bg-red-950/40 text-xs font-bold cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ======================================================== */}
       {/* 2. MAIN CONTENT AREA                                     */}
       {/* ======================================================== */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-6">
-        {/* Mobile Top Header */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-stone-950 border-b border-stone-800 sticky top-0 z-30">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-stone-950 flex items-center justify-center font-bold text-base">
-              ☕
-            </div>
-            <div>
-              <h1 className="font-extrabold text-sm text-white tracking-tight truncate max-w-[150px]">
+      <div className="flex-1 flex flex-col min-w-0 pb-24 md:pb-6">
+        {/* Mobile & iOS Sticky Top Header */}
+        <header className="md:hidden flex items-center justify-between px-3.5 py-2.5 pt-[max(0.65rem,env(safe-area-inset-top))] bg-stone-950/95 backdrop-blur-md border-b border-stone-800 sticky top-0 z-30">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              className="p-2 rounded-xl bg-stone-900 border border-stone-800 text-stone-200 hover:border-amber-500/40 active:scale-95 transition cursor-pointer shrink-0"
+              aria-label="Open menu drawer"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-black text-sm text-white tracking-tight truncate">
+                  {activeNavItem?.label || 'Manager'}
+                </h1>
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    realtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-500 animate-ping'
+                  }`}
+                  title={realtimeConnected ? 'Realtime Live' : 'Offline 5s Poll'}
+                />
+              </div>
+              <span className="text-[10px] text-amber-400/90 font-medium truncate block">
                 {settings.cafe_name}
-              </h1>
-              <span className="text-[10px] text-amber-400 font-medium">Manager Hub</span>
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {!soundUnlocked ? (
               <button
                 onClick={handleEnableSound}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold animate-pulse cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold animate-pulse cursor-pointer active:scale-95"
                 title="Tap once to enable sound alerts"
               >
                 <VolumeX className="w-3.5 h-3.5" />
-                <span>Sound OFF</span>
+                <span>Sound</span>
               </button>
             ) : (
               <button
-                onClick={() => playWaiterCallChime()}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold cursor-pointer"
-                title="Sound alert is enabled"
+                onClick={handleSoundToggle}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer active:scale-95 ${
+                  soundActive
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                    : 'bg-stone-900 text-stone-400 border-stone-800'
+                }`}
+                title="Toggle sound alerts"
               >
-                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Sound ON</span>
+                {soundActive ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5" />}
+                <span>{soundActive ? 'ON' : 'Mute'}</span>
               </button>
             )}
             <button
               onClick={loadAllData}
-              className="p-2 rounded-xl bg-stone-900 text-stone-300"
+              className="p-2 rounded-xl bg-stone-900 border border-stone-800 text-stone-300 active:scale-95 cursor-pointer"
               title="Refresh"
             >
               <RefreshCw className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleLogout}
-              className="p-2 rounded-xl bg-stone-900 text-stone-400 hover:text-red-400"
-              title="Logout"
-            >
-              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </header>
 
         {/* Waiter Request Popup Banner */}
         {pendingCalls.length > 0 && (
-          <div className="bg-gradient-to-r from-red-600 via-red-500 to-amber-600 text-white px-4 lg:px-6 py-3 shadow-2xl border-b border-red-400 sticky top-13 md:top-0 z-30 animate-pulse">
+          <div className="bg-linear-to-r from-red-600 via-red-500 to-amber-600 text-white px-4 lg:px-6 py-3 shadow-2xl border-b border-red-400 sticky top-14 md:top-0 z-30 animate-pulse">
             <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-stone-950 text-red-400 rounded-2xl shrink-0 shadow-md">
@@ -1159,20 +1272,22 @@ export default function ManagerDashboard() {
         )}
 
         {/* Top Bar for Desktop */}
-        <div className="hidden md:flex items-center justify-between px-6 py-3.5 border-b border-stone-800 bg-stone-950/50 backdrop-blur-xs sticky top-0 z-20">
-          <div className="flex items-center gap-3">
-            <h1 className="font-bold text-base text-white capitalize flex items-center gap-2">
-              <span>{activeTab} Management</span>
+        <div className="hidden md:flex items-center justify-between px-6 py-3.5 border-b border-stone-800 bg-stone-950/70 backdrop-blur-xs sticky top-0 z-20">
+          <div className="flex items-center gap-3 min-w-0">
+            <h1 className="font-bold text-base text-white flex items-center gap-2 whitespace-nowrap">
+              <span>{activeNavItem?.label || activeTab}</span>
             </h1>
-            <span className="text-xs text-stone-500">•</span>
-            <span className="text-xs text-stone-400">
+            <span className="text-xs text-stone-600">•</span>
+            <span className="text-xs text-stone-400 truncate">
               {activeTab === 'tables' && `${tables.length} Tables Registered`}
-              {activeTab === 'orders' && `${allOrders.length} Total Orders Tracked`}
+              {activeTab === 'orders' && `${allOrders.length} Active Orders Tracked`}
               {activeTab === 'menu' && `${menuItems.length} Dishes Listed`}
               {activeTab === 'billing' && `${activeSessionsCount} Active Sessions Waiting`}
-              {activeTab === 'reports' && 'Live Performance & Google Sheets Sync'}
+              {activeTab === 'history' && 'Completed Orders & Google Sheets Archive'}
+              {activeTab === 'customers' && 'Customer Directory & Visit Loyalty'}
+              {activeTab === 'reports' && 'Live Performance & Analytics'}
               {activeTab === 'audit' && 'System Activity & Tamper-Proof Audit Trail'}
-              {activeTab === 'qrcodes' && '4x6 Acrylic Stand Cards & NFC Programming URLs'}
+              {activeTab === 'qrcodes' && '4x6 Acrylic Stand Cards & NFC URLs'}
               {activeTab === 'settings' && 'Cafe Configuration & Thermal Receipt Settings'}
             </span>
           </div>
@@ -1264,7 +1379,7 @@ export default function ManagerDashboard() {
           {/* TAB 1: TABLES                                            */}
           {/* -------------------------------------------------------- */}
           {activeTab === 'tables' && (
-            <div className="space-y-5">
+            <div className="space-y-5 animate-fade-in">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className="text-xl font-black text-white tracking-tight">
@@ -1346,7 +1461,7 @@ export default function ManagerDashboard() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {tables.map(table => {
+                {tables.map((table, idx) => {
                   const session = sessions[table.id];
                   const isActive = !!session && session.status === 'ACTIVE';
                   const waiterCall = waiterCalls.find(
@@ -1387,12 +1502,13 @@ export default function ManagerDashboard() {
                   return (
                     <div
                       key={table.id}
+                      style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
                       onClick={() => setSelectedTableForPanel(table)}
-                      className={`rounded-3xl border p-5 flex flex-col justify-between transition-all cursor-pointer relative ${
+                      className={`rounded-3xl border p-4 sm:p-5 flex flex-col justify-between transition-all cursor-pointer relative active:scale-[0.99] sm:hover:-translate-y-0.5 animate-fade-in-up ${
                         isWaiterCalling
-                          ? 'bg-gradient-to-br from-stone-900 via-stone-900 to-red-950/50 border-red-500 hover:border-red-400 shadow-xl shadow-red-500/20 animate-pulse'
+                          ? 'bg-linear-to-br from-stone-900 via-stone-900 to-red-950/50 border-red-500 hover:border-red-400 shadow-xl shadow-red-500/20 animate-pulse'
                           : isActive
-                          ? 'bg-gradient-to-br from-stone-900 via-stone-900 to-amber-950/30 border-amber-500/60 hover:border-amber-400 shadow-lg shadow-amber-500/10'
+                          ? 'bg-linear-to-br from-stone-900 via-stone-900 to-amber-950/30 border-amber-500/60 hover:border-amber-400 shadow-lg shadow-amber-500/10'
                           : 'bg-stone-900/70 border-emerald-500/40 hover:border-emerald-500/70 hover:bg-stone-900 shadow-xs'
                       }`}
                     >
@@ -1471,15 +1587,28 @@ export default function ManagerDashboard() {
                           </div>
                         </div>
 
-                        {/* Waiter Calling Alert Note */}
+                        {/* Waiter Calling Alert Note + 1-Tap Resolve */}
                         {isWaiterCalling && (
-                          <div className="bg-red-950/70 border border-red-800/80 rounded-2xl p-2.5 my-2 text-xs text-red-200 space-y-1">
-                            <span className="font-bold text-[10px] uppercase tracking-wider block text-red-400">
-                              Assistance Requested:
-                            </span>
-                            <p className="italic font-medium">
-                              &quot;{waiterCall.note || 'Staff requested at table'}&quot;
-                            </p>
+                          <div className="bg-red-950/80 border border-red-700/80 rounded-2xl p-3 my-2 text-xs text-red-200 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="font-bold text-[10px] uppercase tracking-wider block text-red-400">
+                                Assistance Requested:
+                              </span>
+                              <p className="italic font-medium truncate">
+                                &quot;{waiterCall.note || 'Staff requested at table'}&quot;
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleResolveWaiterCall(waiterCall.id);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white font-black text-xs shrink-0 flex items-center gap-1 shadow-md cursor-pointer"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Done</span>
+                            </button>
                           </div>
                         )}
 
@@ -1590,7 +1719,7 @@ export default function ManagerDashboard() {
           {/* TAB 2: ORDERS (Grouped by Table, Status Stepper & Cancel)*/}
           {/* -------------------------------------------------------- */}
           {activeTab === 'orders' && (
-            <div className="space-y-5">
+            <div className="space-y-5 animate-fade-in">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black text-white tracking-tight">
@@ -1601,16 +1730,16 @@ export default function ManagerDashboard() {
                   </p>
                 </div>
 
-                {/* Filter Chips */}
-                <div className="flex flex-wrap gap-1.5">
+                {/* Filter Chips (Mobile scrollable strip) */}
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 max-w-full">
                   {(['ALL', 'PENDING', 'PREPARING', 'READY', 'SERVED'] as const).map(filter => (
                     <button
                       key={filter}
                       onClick={() => setOrderFilter(filter)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer active:scale-95 ${
                         orderFilter === filter
                           ? 'bg-amber-500 text-stone-950 font-black shadow-sm'
-                          : 'bg-stone-900 text-stone-400 hover:bg-stone-800'
+                          : 'bg-stone-900 text-stone-400 hover:bg-stone-800 border border-stone-800'
                       }`}
                     >
                       {filter === 'ALL'
@@ -1625,7 +1754,7 @@ export default function ManagerDashboard() {
 
               {/* Sound Autoplay Helper Banner */}
               {!soundUnlocked ? (
-                <div className="bg-amber-950/60 border border-amber-900/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-in fade-in">
+                <div className="bg-amber-950/60 border border-amber-900/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-fade-in">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
                       <VolumeX className="w-5 h-5" />
@@ -1702,9 +1831,9 @@ export default function ManagerDashboard() {
                   return (
                     <div
                       key={group.table.id}
-                      className={`rounded-3xl border p-5 space-y-4 transition-all shadow-md ${
+                      className={`rounded-3xl border p-4 sm:p-5 space-y-4 transition-all shadow-md animate-fade-in-up ${
                         isCalling
-                          ? 'bg-gradient-to-br from-stone-900 via-stone-900 to-red-950/60 border-red-500 shadow-xl shadow-red-500/20 animate-pulse'
+                          ? 'bg-linear-to-br from-stone-900 via-stone-900 to-red-950/60 border-red-500 shadow-xl shadow-red-500/20 animate-pulse'
                           : 'bg-stone-900 border-stone-800'
                       }`}
                     >
@@ -1823,7 +1952,7 @@ export default function ManagerDashboard() {
                                       <button
                                         key={st.status}
                                         onClick={() => handleUpdateOrderStatus(order.id, st.status)}
-                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                        className={`min-h-[34px] px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer active:scale-95 ${
                                           isCurrent
                                             ? 'bg-amber-500 text-stone-950 font-black shadow-md shadow-amber-500/20 scale-105'
                                             : 'bg-stone-800/90 text-stone-400 hover:bg-stone-800 hover:text-stone-200'
@@ -1930,7 +2059,7 @@ export default function ManagerDashboard() {
           {/* TAB 3: MENU MANAGER                                      */}
           {/* -------------------------------------------------------- */}
           {activeTab === 'menu' && (
-            <div className="space-y-5">
+            <div className="space-y-5 animate-fade-in">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-black text-white tracking-tight">
@@ -2013,22 +2142,32 @@ export default function ManagerDashboard() {
               <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
                 {/* Search */}
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={menuSearch}
                     onChange={e => setMenuSearch(e.target.value)}
                     placeholder="Search dishes by name (English or हिन्दी)..."
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-stone-800 border border-stone-700 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500"
+                    className="w-full pl-9 pr-9 py-2 text-base sm:text-xs rounded-xl bg-stone-800 border border-stone-700 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500"
                   />
+                  {menuSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMenuSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-white cursor-pointer"
+                      aria-label="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
-                {/* Veg / Non-Veg Filter */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                {/* Veg / Non-Veg Filter (Scrollable on phones) */}
+                <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto scrollbar-none">
                   <Filter className="w-3.5 h-3.5 text-stone-500 hidden sm:block" />
                   <button
                     onClick={() => setVegFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                       vegFilter === 'ALL'
                         ? 'bg-amber-500 text-stone-950 font-black'
                         : 'bg-stone-800 text-stone-400'
@@ -2038,7 +2177,7 @@ export default function ManagerDashboard() {
                   </button>
                   <button
                     onClick={() => setVegFilter('VEG')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                       vegFilter === 'VEG'
                         ? 'bg-emerald-500 text-stone-950 font-black'
                         : 'bg-stone-800 text-stone-400'
@@ -2048,7 +2187,7 @@ export default function ManagerDashboard() {
                   </button>
                   <button
                     onClick={() => setVegFilter('NON_VEG')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                       vegFilter === 'NON_VEG'
                         ? 'bg-red-500 text-stone-950 font-black'
                         : 'bg-stone-800 text-stone-400'
@@ -2122,12 +2261,13 @@ export default function ManagerDashboard() {
 
               {/* Items Grid with Big "Not available today" Toggle */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredMenuItems.map(item => (
+                {filteredMenuItems.map((item, idx) => (
                   <div
                     key={item.id}
-                    className={`bg-stone-900 border rounded-3xl p-5 flex flex-col justify-between gap-3.5 transition-all shadow-sm ${
+                    style={{ animationDelay: `${Math.min(idx * 30, 180)}ms` }}
+                    className={`bg-stone-900 border rounded-3xl p-4 sm:p-5 flex flex-col justify-between gap-3.5 transition-all shadow-sm animate-fade-in-up ${
                       item.is_available
-                        ? 'border-stone-800'
+                        ? 'border-stone-800 hover:border-stone-700'
                         : 'border-red-900/60 bg-stone-950/80 opacity-80'
                     }`}
                   >
@@ -2238,7 +2378,7 @@ export default function ManagerDashboard() {
           {/* TAB 4: BILLING                                           */}
           {/* -------------------------------------------------------- */}
           {activeTab === 'billing' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fade-in">
               <div>
                 <h2 className="text-xl font-black text-white tracking-tight">
                   Counter Billing &amp; Invoices
@@ -2282,7 +2422,7 @@ export default function ManagerDashboard() {
                         setInvoiceSearchQuery(e.target.value);
                         if (searchError) setSearchError(null);
                       }}
-                      className="w-full pl-10 pr-10 py-2.5 text-xs rounded-2xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
+                      className="w-full pl-10 pr-10 py-2.5 text-base sm:text-xs rounded-2xl bg-stone-950 border border-stone-800 text-white placeholder-stone-500 focus:outline-hidden focus:border-amber-500 font-mono"
                     />
                     {invoiceSearchQuery && (
                       <button
@@ -2407,7 +2547,84 @@ export default function ManagerDashboard() {
                         </span>
                       </div>
 
-                      <div className="overflow-x-auto rounded-xl border border-stone-800">
+                      {/* Mobile Ledger Card View */}
+                      <div className="md:hidden space-y-2.5">
+                        {customerHistory.invoices.map((inv, idx) => (
+                          <div
+                            key={inv.bill.id || inv.bill.invoice_number || idx}
+                            className="p-3.5 rounded-2xl bg-stone-900 border border-stone-800 space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono font-bold text-amber-300 text-xs">
+                                    {inv.bill.invoice_number}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black font-mono">
+                                    Visit #{inv.bill.visit_count || customerHistory.invoices.length - idx}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-stone-400 block mt-0.5">
+                                  {inv.bill.table_number || 'Table'} •{' '}
+                                  {inv.bill.created_at
+                                    ? new Date(inv.bill.created_at).toLocaleString('en-IN', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true,
+                                      })
+                                    : 'N/A'}
+                                </span>
+                              </div>
+                              <span className="font-mono font-black text-white text-sm shrink-0">
+                                ₹{inv.bill.total_amount}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-stone-300 line-clamp-2">
+                              {inv.items.length > 0
+                                ? inv.items.map(i => `${i.quantity}x ${i.item_name_en}`).join(', ')
+                                : 'Items synced'}
+                            </p>
+
+                            <div className="flex items-center justify-between pt-1">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  inv.source === 'supabase'
+                                    ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-blue-950/80 text-blue-400 border border-blue-500/30'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    inv.source === 'supabase' ? 'bg-emerald-400' : 'bg-blue-400'
+                                  }`}
+                                />
+                                {inv.source === 'supabase' ? 'Supabase' : 'Google Sheets'}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInspectedInvoice({
+                                    bill: inv.bill,
+                                    items: inv.items,
+                                    source: inv.source,
+                                  });
+                                }}
+                                className="py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold inline-flex items-center gap-1 shadow-sm transition cursor-pointer"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>View / Print</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Desktop Ledger Table View */}
+                      <div className="hidden md:block overflow-x-auto rounded-xl border border-stone-800">
                         <table className="w-full text-left text-xs">
                           <thead>
                             <tr className="border-b border-stone-800 text-[10px] sm:text-[11px] text-stone-400 uppercase font-bold bg-stone-900/90">
@@ -2566,7 +2783,52 @@ export default function ManagerDashboard() {
                   Recent Invoices &amp; Completed Bills ({recentBills.length})
                 </h3>
 
-                <div className="overflow-x-auto bg-stone-900 border border-stone-800 rounded-3xl">
+                {/* Mobile Recent Bills Card View */}
+                <div className="md:hidden space-y-2.5">
+                  {recentBills.map(b => (
+                    <div
+                      key={b.id}
+                      className="bg-stone-900 border border-stone-800 rounded-2xl p-4 space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-amber-400 text-xs">{b.invoice_number}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              Synced
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-white mt-0.5">
+                            {b.table_number} • {b.customer_name}
+                          </p>
+                          <p className="text-[11px] font-mono text-stone-400">
+                            {b.customer_phone} •{' '}
+                            {new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        <span className="font-mono font-black text-base text-white shrink-0">
+                          ₹{b.total_amount}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleInspectRecentBill(b)}
+                        className="w-full min-h-[38px] px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>View / Print Receipt</span>
+                      </button>
+                    </div>
+                  ))}
+                  {recentBills.length === 0 && (
+                    <div className="p-8 text-center text-stone-500 bg-stone-900 border border-stone-800 rounded-2xl text-xs">
+                      No bills settled yet today.
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop Recent Bills Table */}
+                <div className="hidden md:block overflow-x-auto bg-stone-900 border border-stone-800 rounded-3xl">
                   <table className="w-full text-left text-xs text-stone-300">
                     <thead className="bg-stone-950/80 text-stone-400 font-mono text-[11px] uppercase border-b border-stone-800">
                       <tr>
@@ -2669,7 +2931,7 @@ export default function ManagerDashboard() {
           {/* TAB 8: SETTINGS                                          */}
           {/* -------------------------------------------------------- */}
           {activeTab === 'settings' && (
-            <div className="max-w-3xl bg-stone-900 border border-stone-800 rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="max-w-3xl bg-stone-900 border border-stone-800 rounded-3xl p-4 sm:p-8 space-y-6 animate-fade-in">
               <div className="border-b border-stone-800 pb-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
@@ -2705,7 +2967,7 @@ export default function ManagerDashboard() {
                         value={settings.cafe_name}
                         onChange={e => setSettings({ ...settings, cafe_name: e.target.value })}
                         placeholder="e.g. Brew &amp; Bites Cafe"
-                        className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
+                        className="w-full px-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
                       />
                     </div>
 
@@ -2718,7 +2980,7 @@ export default function ManagerDashboard() {
                         value={settings.cafe_phone || ''}
                         onChange={e => setSettings({ ...settings, cafe_phone: e.target.value })}
                         placeholder="+91 98765 43210"
-                        className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
+                        className="w-full px-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
                       />
                     </div>
                   </div>
@@ -2735,7 +2997,7 @@ export default function ManagerDashboard() {
                           value={settings.cafe_email || ''}
                           onChange={e => setSettings({ ...settings, cafe_email: e.target.value })}
                           placeholder="contact@brewandbites.com"
-                          className="w-full pl-9 pr-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
+                          className="w-full pl-9 pr-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
                         />
                       </div>
                     </div>
@@ -2749,7 +3011,7 @@ export default function ManagerDashboard() {
                         value={settings.cafe_address || ''}
                         onChange={e => setSettings({ ...settings, cafe_address: e.target.value })}
                         placeholder="Shop 12, Connaught Place, New Delhi"
-                        className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
+                        className="w-full px-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-medium"
                       />
                     </div>
                   </div>
@@ -2773,7 +3035,7 @@ export default function ManagerDashboard() {
                         onChange={e => setSettings({ ...settings, gst_number: e.target.value.toUpperCase() })}
                         placeholder="07AAAAA1234A1Z5"
                         maxLength={15}
-                        className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono tracking-wider"
+                        className="w-full px-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono tracking-wider"
                       />
                     </div>
 
@@ -2781,7 +3043,7 @@ export default function ManagerDashboard() {
                       <label className="block text-xs font-semibold text-stone-300 mb-1">
                         GST / Tax Calculation
                       </label>
-                      <div className="flex items-center justify-between p-2.5 bg-stone-800/90 border border-stone-700 rounded-xl h-[42px]">
+                      <div className="flex items-center justify-between p-2.5 bg-stone-800/90 border border-stone-700 rounded-xl min-h-[44px] sm:h-[42px]">
                         <span className="text-xs font-bold text-stone-300">
                           {settings.tax_enabled ? 'Tax ON' : 'Tax OFF'}
                         </span>
@@ -2811,7 +3073,7 @@ export default function ManagerDashboard() {
                         onChange={e =>
                           setSettings({ ...settings, gst_rate_percent: Number(e.target.value) })
                         }
-                        className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono disabled:opacity-40"
+                        className="w-full px-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono disabled:opacity-40"
                       />
                     </div>
                   </div>
@@ -2828,7 +3090,7 @@ export default function ManagerDashboard() {
                           value={settings.order_id_prefix || 'ORD-'}
                           onChange={e => setSettings({ ...settings, order_id_prefix: e.target.value })}
                           placeholder="e.g. ORD-"
-                          className="w-full pl-9 pr-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono uppercase"
+                          className="w-full pl-9 pr-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono uppercase"
                         />
                       </div>
                       <span className="text-[10px] text-stone-500 block mt-1">
@@ -2849,7 +3111,7 @@ export default function ManagerDashboard() {
                           max="24"
                           value={settings.session_hours ?? 2}
                           onChange={e => setSettings({ ...settings, session_hours: Number(e.target.value) })}
-                          className="w-full pl-9 pr-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono"
+                          className="w-full pl-9 pr-3.5 py-2.5 text-base sm:text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono"
                         />
                       </div>
                       <span className="text-[10px] text-stone-500 block mt-1">
@@ -2882,7 +3144,7 @@ export default function ManagerDashboard() {
                         max="50"
                         value={settings.loyalty_every_n_visits ?? 5}
                         onChange={e => setSettings({ ...settings, loyalty_every_n_visits: Number(e.target.value) })}
-                        className="w-16 px-2.5 py-2 text-center text-sm rounded-xl bg-stone-800 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono font-bold"
+                        className="w-16 px-2.5 py-2 text-center text-base sm:text-sm rounded-xl bg-stone-800 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono font-bold"
                       />
                       <span className="text-xs text-stone-400 font-semibold">visits</span>
                     </div>
@@ -2896,11 +3158,11 @@ export default function ManagerDashboard() {
                     <span>Thermal Receipt Paper Size</span>
                   </h3>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {(['58mm', '80mm'] as const).map(size => (
                       <label
                         key={size}
-                        className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between transition ${
+                        className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between transition touch-manipulation ${
                           settings.receipt_paper_size === size
                             ? 'border-amber-500 bg-amber-500/10 text-amber-300 font-bold shadow-md shadow-amber-500/10'
                             : 'border-stone-800 bg-stone-800/40 text-stone-400 hover:border-stone-700'
@@ -2913,7 +3175,7 @@ export default function ManagerDashboard() {
                             value={size}
                             checked={settings.receipt_paper_size === size}
                             onChange={() => setSettings({ ...settings, receipt_paper_size: size })}
-                            className="accent-amber-500"
+                            className="accent-amber-500 w-4 h-4 shrink-0"
                           />
                           <div>
                             <span className="text-sm font-bold block text-white">{size} Width</span>
@@ -2934,9 +3196,9 @@ export default function ManagerDashboard() {
                     <span>Kitchen Display Screen (KDS)</span>
                   </h3>
 
-                  <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex items-center justify-between">
+                  <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-sm text-white">Kitchen Screen Display</h4>
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
@@ -2955,12 +3217,12 @@ export default function ManagerDashboard() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                       {settings.kitchen_screen_enabled && (
                         <Link
                           href="/kitchen"
                           target="_blank"
-                          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 transition"
+                          className="flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 transition touch-manipulation"
                         >
                           <span>Open /kitchen</span>
                           <ExternalLink className="w-3 h-3" />
@@ -2999,7 +3261,7 @@ export default function ManagerDashboard() {
                         value={settings.google_sheet_id || ''}
                         onChange={e => setSettings({ ...settings, google_sheet_id: e.target.value })}
                         placeholder="1lqe2AlMhSUuXPcVIUBryfBUiL-us8r_5DzPDTwcCMUY"
-                        className="w-full pl-9 pr-3.5 py-2.5 text-sm rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono text-xs"
+                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-stone-800/90 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono text-base sm:text-xs"
                       />
                     </div>
                   </div>
@@ -3011,7 +3273,7 @@ export default function ManagerDashboard() {
                   <p className="text-stone-400 text-[11px]">
                     Verified with database <code>staff_emails</code> and <code>is_manager()</code> RPC function:
                   </p>
-                  <code className="text-white font-mono text-[11px] block bg-stone-900 px-3 py-1.5 rounded-lg border border-stone-800">
+                  <code className="text-white font-mono text-[11px] block bg-stone-900 px-3 py-1.5 rounded-lg border border-stone-800 break-all">
                     friendsphotoaman2@gmail.com
                   </code>
                 </div>
@@ -3023,9 +3285,9 @@ export default function ManagerDashboard() {
                     <span>Table Security &amp; 4-Digit PIN Switch</span>
                   </h3>
 
-                  <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex items-center justify-between">
+                  <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-sm text-white">Require Table PIN by Default</h4>
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
@@ -3047,7 +3309,7 @@ export default function ManagerDashboard() {
                       </p>
                     </div>
 
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 self-end sm:self-center">
                       <input
                         type="checkbox"
                         checked={settings.require_pin ?? true}
@@ -3068,7 +3330,7 @@ export default function ManagerDashboard() {
 
                   <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-sm text-white">Menu Photos Storage</h4>
                         <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-stone-900 border border-stone-700 text-stone-300 font-bold">
                           {storageStats ? `${storageStats.total_files} files • ${storageStats.total_size_mb} MB` : 'Loading storage stats...'}
@@ -3091,7 +3353,7 @@ export default function ManagerDashboard() {
                           alert('Storage cleanup failed.');
                         }
                       }}
-                      className="py-2 px-3.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                      className="py-2.5 sm:py-2 px-3.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer active:scale-95 touch-manipulation"
                     >
                       <Trash2 className="w-3.5 h-3.5 text-amber-400" />
                       <span>Clean Orphaned Photos</span>
@@ -3100,7 +3362,7 @@ export default function ManagerDashboard() {
                 </div>
 
                 {settingsSuccess && (
-                  <div className="p-3.5 bg-emerald-950/80 border border-emerald-800 rounded-2xl text-xs text-emerald-300 flex items-center gap-2.5 shadow-lg animate-in fade-in">
+                  <div className="p-3.5 bg-emerald-950/80 border border-emerald-800 rounded-2xl text-xs text-emerald-300 flex items-center gap-2.5 shadow-lg animate-fade-in">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="font-bold">Settings saved successfully! Changes are live across customer menu, kitchen, and billing.</span>
                   </div>
@@ -3109,7 +3371,7 @@ export default function ManagerDashboard() {
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="w-full py-4 px-6 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-98 text-white font-bold text-sm shadow-xl shadow-amber-600/20 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-bold text-base sm:text-sm shadow-xl shadow-amber-600/20 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 touch-manipulation"
                 >
                   <Sliders className="w-4 h-4" />
                   <span>{savingSettings ? 'Saving Settings...' : 'Save Settings'}</span>
@@ -3123,28 +3385,51 @@ export default function ManagerDashboard() {
       {/* ======================================================== */}
       {/* 4. MOBILE BOTTOM NAVIGATION (Phone only)                 */}
       {/* ======================================================== */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-stone-950/95 backdrop-blur-md border-t border-stone-800 flex items-center justify-around overflow-x-auto py-1.5 px-1 gap-1">
-        {navItems.map(item => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-stone-950/95 backdrop-blur-md border-t border-stone-800/90 flex items-center justify-around px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.45)]">
+        {navItems
+          .filter(item => ['tables', 'orders', 'menu', 'billing'].includes(item.id))
+          .map(item => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex-1 flex flex-col items-center justify-center min-h-[44px] py-1 rounded-xl transition-all active:scale-95 relative ${
+                  isActive ? 'text-amber-400 font-black' : 'text-stone-500 hover:text-stone-300'
+                }`}
+              >
+                <div className="relative">
+                  <Icon className={`w-5 h-5 transition-transform duration-200 ${isActive ? 'text-amber-400 scale-110' : 'text-stone-400'}`} />
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="absolute -top-1 -right-2 w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  )}
+                </div>
+                <span className="text-[10px] tracking-tight mt-0.5">{item.label}</span>
+              </button>
+            );
+          })}
+        {(() => {
+          const isMoreActive = ['history', 'customers', 'reports', 'audit', 'qrcodes', 'settings'].includes(activeTab);
           return (
             <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center justify-center shrink-0 min-w-[46px] py-1 rounded-xl transition-all relative ${
-                isActive ? 'text-amber-400 font-black' : 'text-stone-500 hover:text-stone-300'
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              className={`flex-1 flex flex-col items-center justify-center min-h-[44px] py-1 rounded-xl transition-all active:scale-95 relative ${
+                isMoreActive || mobileDrawerOpen ? 'text-amber-400 font-black' : 'text-stone-500 hover:text-stone-300'
               }`}
             >
               <div className="relative">
-                <Icon className={`w-5 h-5 ${isActive ? 'text-amber-400 scale-110' : 'text-stone-400'}`} />
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-2 w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                <LayoutGrid className={`w-5 h-5 transition-transform duration-200 ${isMoreActive || mobileDrawerOpen ? 'text-amber-400 scale-110' : 'text-stone-400'}`} />
+                {isMoreActive && (
+                  <span className="absolute -top-0.5 -right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
                 )}
               </div>
-              <span className="text-[10px] tracking-tight">{item.label}</span>
+              <span className="text-[10px] tracking-tight mt-0.5">More</span>
             </button>
           );
-        })}
+        })()}
       </nav>
 
       {/* Table Details & Sessions Drawer Panel */}
@@ -3179,8 +3464,15 @@ export default function ManagerDashboard() {
 
       {/* Cancel Item Confirmation Modal (writes to audit_log) */}
       {cancellingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md bg-stone-900 border border-red-900/60 rounded-3xl p-6 shadow-2xl space-y-4">
+        <div
+          onClick={() => setCancellingItem(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/80 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-stone-900 border border-red-900/60 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl space-y-4 animate-slide-up sm:animate-scale-up"
+          >
+            <div className="w-10 h-1 rounded-full bg-stone-700 mx-auto -mt-1 sm:hidden" />
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-2xl bg-red-950/80 text-red-400 border border-red-800/60 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
@@ -3212,21 +3504,23 @@ export default function ManagerDashboard() {
                 value={cancelReason}
                 onChange={e => setCancelReason(e.target.value)}
                 placeholder="e.g. Customer changed mind / Kitchen out of stock"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-stone-800 border border-stone-700 text-white focus:outline-hidden focus:border-red-500 font-medium"
+                className="w-full px-3.5 py-2.5 text-base sm:text-xs rounded-xl bg-stone-800 border border-stone-700 text-white focus:outline-hidden focus:border-red-500 font-medium"
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2.5 pt-1">
               <button
+                type="button"
                 onClick={() => setCancellingItem(null)}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition cursor-pointer"
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition cursor-pointer active:scale-95 touch-manipulation"
               >
                 Keep Item
               </button>
               <button
+                type="button"
                 onClick={handleConfirmCancelItem}
                 disabled={cancelSubmitting}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition disabled:opacity-50 cursor-pointer"
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95 touch-manipulation"
               >
                 {cancelSubmitting ? 'Cancelling...' : 'Confirm Cancel & Log'}
               </button>
@@ -3285,8 +3579,18 @@ export default function ManagerDashboard() {
 
       {/* Master PIN Requirement Toggle Confirmation Modal */}
       {pinToggleConfirmOpen && pendingPinToggleValue !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in select-none">
-          <div className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+        <div
+          onClick={() => {
+            setPinToggleConfirmOpen(false);
+            setPendingPinToggleValue(null);
+          }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-fade-in select-none"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl space-y-4 animate-slide-up sm:animate-scale-up"
+          >
+            <div className="w-10 h-1 rounded-full bg-stone-700 mx-auto -mt-1 sm:hidden" />
             <div className="flex items-center gap-3">
               <div
                 className={`p-3 rounded-2xl shrink-0 ${

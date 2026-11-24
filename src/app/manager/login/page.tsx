@@ -92,8 +92,8 @@ function ManagerLoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-stone-950 via-stone-900 to-amber-950 flex flex-col justify-center items-center p-4 text-white">
-      <div className="w-full max-w-md bg-stone-900/90 border border-amber-900/40 rounded-3xl p-8 shadow-2xl backdrop-blur-md">
+    <div className="min-h-[100dvh] bg-linear-to-b from-stone-950 via-stone-900 to-amber-950 flex flex-col justify-center items-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-white animate-fade-in">
+      <div className="w-full max-w-md bg-stone-900/90 border border-amber-900/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md animate-scale-up">
         <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/20 text-stone-950 font-bold text-2xl">
           <ShieldCheck className="w-8 h-8 text-stone-950" />
         </div>
@@ -108,7 +108,7 @@ function ManagerLoginForm() {
         {errorMsg && (
           <div
             id="auth-error-alert"
-            className="p-3.5 mb-6 bg-red-950/90 border border-red-700/80 rounded-2xl text-xs text-red-200 flex items-center gap-2.5 shadow-lg animate-in fade-in"
+            className="p-3.5 mb-6 bg-red-950/90 border border-red-700/80 rounded-2xl text-xs text-red-200 flex items-center gap-2.5 shadow-lg animate-fade-in"
           >
             <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
             <span className="font-semibold">{errorMsg}</span>
