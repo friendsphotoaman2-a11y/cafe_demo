@@ -23,7 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_bills_created_at ON public.bills(created_at);
 CREATE INDEX IF NOT EXISTS idx_bills_synced ON public.bills(synced_to_sheets);
 CREATE INDEX IF NOT EXISTS idx_waiter_calls_status ON public.waiter_calls(status);
 CREATE INDEX IF NOT EXISTS idx_waiter_calls_created_at ON public.waiter_calls(created_at);
-CREATE INDEX IF NOT EXISTS idx_menu_items_available ON public.menu_items(is_available_today);
+CREATE INDEX IF NOT EXISTS idx_menu_items_available ON public.menu_items(is_available);
 CREATE INDEX IF NOT EXISTS idx_menu_items_category ON public.menu_items(category_id);
 
 -- 4. RPC to get effective table PIN requirement
