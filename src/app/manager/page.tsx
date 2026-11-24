@@ -402,6 +402,9 @@ export default function ManagerDashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
         loadAllData();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
+        loadAllData();
+      })
       .subscribe(status => {
         setRealtimeConnected(status === 'SUBSCRIBED');
       });

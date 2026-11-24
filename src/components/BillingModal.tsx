@@ -21,6 +21,7 @@ import confetti from 'canvas-confetti';
 import { jsPDF } from 'jspdf';
 import { normalizePhoneNumber } from '@/lib/phone-utils';
 import { apiUrl } from '@/lib/base-path';
+import { broadcastSheetsSync } from '@/lib/realtime-sync';
 
 interface Props {
   table: CafeTable;
@@ -231,6 +232,7 @@ export function BillingModal({
         setCompletedBill(data.bill);
         setCompletedItems(data.items || allItems);
         setSheetsSynced(data.sheets_synced);
+        broadcastSheetsSync('all');
         onBillCompleted();
       }
     } catch {

@@ -17,6 +17,7 @@ import {
 import { apiUrl } from '@/lib/base-path';
 import { Bill, OrderItem } from '@/types/database';
 import { parseSheetDate } from '@/lib/date-utils';
+import { broadcastSheetsSync, subscribeSheetsSync } from '@/lib/realtime-sync';
 
 interface OrderHistoryRecord {
   order_id: string;
@@ -118,7 +119,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
     fetchOrderHistory();
   }, [fetchOrderHistory]);
 
-  // Realtime sync every 15s when visible + instant sync on tab focus
+  // Realtime sync every 6s when visible + instant sync on tab focus & cross-tab broadcast
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === 'visible') {
@@ -126,13 +127,19 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
       }
     };
     document.addEventListener('visibilitychange', onVis);
+    const unsubscribe = subscribeSheetsSync(scope => {
+      if (scope === 'all' || scope === 'orders') {
+        fetchOrderHistory(true, true);
+      }
+    });
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchOrderHistory(true, true);
       }
-    }, 15000);
+    }, 6000);
     return () => {
       document.removeEventListener('visibilitychange', onVis);
+      unsubscribe();
       clearInterval(interval);
     };
   }, [fetchOrderHistory]);
@@ -141,6 +148,18 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
     if (!confirmDelete) return;
     setDeleting(true);
     setErrorMsg(null);
+
+    const prevOrders = orders;
+    const prevTotal = totalCount;
+
+    // Optimistic instant removal from UI
+    if (confirmDelete.mode === 'all') {
+      setOrders([]);
+      setTotalCount(0);
+    } else if (confirmDelete.orderId) {
+      setOrders(curr => curr.filter(o => o.order_id !== confirmDelete.orderId));
+      setTotalCount(curr => Math.max(0, curr - 1));
+    }
 
     try {
       const payload =
@@ -156,12 +175,17 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        setOrders(prevOrders);
+        setTotalCount(prevTotal);
         setErrorMsg(data.message || 'Failed to delete order from Google Sheet.');
       } else {
         setConfirmDelete(null);
+        broadcastSheetsSync('all');
         await fetchOrderHistory(true, true);
       }
     } catch {
+      setOrders(prevOrders);
+      setTotalCount(prevTotal);
       setErrorMsg('Network error while deleting order.');
     } finally {
       setDeleting(false);

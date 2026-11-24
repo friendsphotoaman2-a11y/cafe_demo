@@ -17,6 +17,7 @@ import {
 import { ManagerSettings } from '@/types/database';
 import { DailySalesRecord, TableSalesRecord, BestSellingItemRecord } from '@/app/api/manager/reports/route';
 import { apiUrl } from '@/lib/base-path';
+import { subscribeSheetsSync } from '@/lib/realtime-sync';
 
 interface ReportsData {
   success: boolean;
@@ -82,11 +83,15 @@ export function ReportsView({ settings }: Props) {
       if (document.visibilityState === 'visible') fetchReports(true, true);
     };
     document.addEventListener('visibilitychange', onVis);
+    const unsubscribe = subscribeSheetsSync(() => {
+      fetchReports(true, true);
+    });
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchReports(true, true);
-    }, 20000);
+    }, 8000);
     return () => {
       document.removeEventListener('visibilitychange', onVis);
+      unsubscribe();
       clearInterval(interval);
     };
   }, [fetchReports]);

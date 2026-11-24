@@ -10,7 +10,7 @@ interface CacheSlot<T> {
 
 const slots = new Map<string, CacheSlot<unknown>>();
 
-export const SHEETS_CACHE_TTL_MS = 12_000; // 12 seconds for near-realtime Sheet mirroring within quota
+export const SHEETS_CACHE_TTL_MS = 4_000; // 4 seconds for near-realtime Sheet mirroring within quota
 
 export function getSheetsCache<T>(key: string, forceRefresh = false): { data: T; ageSec: number } | null {
   if (forceRefresh) return null;

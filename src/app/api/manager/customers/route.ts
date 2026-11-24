@@ -137,7 +137,7 @@ export async function DELETE(req: NextRequest) {
       // Ignore if customers table absent
     }
 
-    invalidateSheetsCache('customers');
+    invalidateSheetsCache('customers', 'reports');
 
     return NextResponse.json({
       success: true,

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { apiUrl } from '@/lib/base-path';
 import { formatSheetDate } from '@/lib/date-utils';
+import { broadcastSheetsSync, subscribeSheetsSync } from '@/lib/realtime-sync';
 
 interface CustomerRecord {
   phone: string;
@@ -79,17 +80,23 @@ export function CustomersView() {
     fetchCustomers();
   }, [fetchCustomers]);
 
-  // Realtime sync every 15s when visible + instant sync on tab focus
+  // Realtime sync every 6s when visible + instant sync on tab focus & cross-tab broadcast
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === 'visible') fetchCustomers(true, true);
     };
     document.addEventListener('visibilitychange', onVis);
+    const unsubscribe = subscribeSheetsSync(scope => {
+      if (scope === 'all' || scope === 'customers') {
+        fetchCustomers(true, true);
+      }
+    });
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchCustomers(true, true);
-    }, 15000);
+    }, 6000);
     return () => {
       document.removeEventListener('visibilitychange', onVis);
+      unsubscribe();
       clearInterval(interval);
     };
   }, [fetchCustomers]);
@@ -98,6 +105,13 @@ export function CustomersView() {
     if (!confirmDelete) return;
     setDeleting(true);
     setErrorMsg(null);
+
+    const prevCustomers = customers;
+    if (confirmDelete.mode === 'all') {
+      setCustomers([]);
+    } else if (confirmDelete.phone) {
+      setCustomers(curr => curr.filter(c => c.phone !== confirmDelete.phone));
+    }
 
     try {
       const payload =
@@ -109,12 +123,15 @@ export function CustomersView() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        setCustomers(prevCustomers);
         setErrorMsg(data.message || 'Failed to delete customer from Google Sheet.');
       } else {
         setConfirmDelete(null);
+        broadcastSheetsSync('all');
         await fetchCustomers(true, true);
       }
     } catch {
+      setCustomers(prevCustomers);
       setErrorMsg('Network error while deleting customer.');
     } finally {
       setDeleting(false);

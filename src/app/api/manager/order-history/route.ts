@@ -161,10 +161,11 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Clean up any legacy Supabase bills rows if present
+    // Clean up any legacy Supabase bills / billed orders rows if present
     try {
       if (clearAll) {
         await supabaseAdmin.from('bills').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabaseAdmin.from('orders').delete().eq('status', 'BILLED');
       } else if (orderId) {
         await supabaseAdmin.from('bills').delete().ilike('invoice_number', orderId);
       }
@@ -172,7 +173,7 @@ export async function DELETE(req: NextRequest) {
       // Ignore if bills table doesn't exist or is empty
     }
 
-    invalidateSheetsCache('orderHistory', 'reports');
+    invalidateSheetsCache('orderHistory', 'reports', 'customers');
 
     return NextResponse.json({
       success: true,

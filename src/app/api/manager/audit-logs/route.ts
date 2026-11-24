@@ -89,6 +89,20 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
+    // Clean up any legacy Supabase audit_logs/audit_log rows if present
+    try {
+      const supabaseAdmin = createAdminClient();
+      if (clearAll) {
+        await supabaseAdmin.from('audit_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabaseAdmin.from('audit_log').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      } else if (entityId) {
+        await supabaseAdmin.from('audit_logs').delete().eq('entity_id', entityId);
+        await supabaseAdmin.from('audit_log').delete().eq('entity_id', entityId);
+      }
+    } catch {
+      // Ignore if legacy tables do not exist
+    }
+
     return NextResponse.json({
       success: true,
       deletedCount: res.deletedCount,

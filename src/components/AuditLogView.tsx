@@ -21,6 +21,7 @@ import { ManagerSettings } from '@/types/database';
 import { AuditLogEntry, AuditAction } from '@/lib/audit-logger';
 import { apiUrl } from '@/lib/base-path';
 import { parseSheetDate } from '@/lib/date-utils';
+import { broadcastSheetsSync, subscribeSheetsSync } from '@/lib/realtime-sync';
 
 interface AuditLogResponse {
   success: boolean;
@@ -99,11 +100,17 @@ export function AuditLogView({ settings }: Props) {
       if (document.visibilityState === 'visible') fetchLogs(true, true);
     };
     document.addEventListener('visibilitychange', onVis);
+    const unsubscribe = subscribeSheetsSync(scope => {
+      if (scope === 'all' || scope === 'audit') {
+        fetchLogs(true, true);
+      }
+    });
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchLogs(true, true);
-    }, 15000);
+    }, 6000);
     return () => {
       document.removeEventListener('visibilitychange', onVis);
+      unsubscribe();
       clearInterval(interval);
     };
   }, [fetchLogs]);
@@ -111,6 +118,17 @@ export function AuditLogView({ settings }: Props) {
   async function handleConfirmDelete() {
     if (!confirmDelete) return;
     setDeleting(true);
+    const prevLogs = logs;
+    if (confirmDelete.mode === 'all') {
+      setLogs([]);
+    } else if (confirmDelete.timestamp) {
+      setLogs(curr =>
+        curr.filter(
+          l => !(l.timestamp === confirmDelete.timestamp && (!confirmDelete.entity_id || l.entity_id === confirmDelete.entity_id))
+        )
+      );
+    }
+
     try {
       const payload =
         confirmDelete.mode === 'all'
@@ -124,10 +142,13 @@ export function AuditLogView({ settings }: Props) {
       const json = await res.json();
       if (json.success) {
         setConfirmDelete(null);
+        broadcastSheetsSync('audit');
         await fetchLogs(true, true);
+      } else {
+        setLogs(prevLogs);
       }
     } catch {
-      // ignore
+      setLogs(prevLogs);
     } finally {
       setDeleting(false);
     }
