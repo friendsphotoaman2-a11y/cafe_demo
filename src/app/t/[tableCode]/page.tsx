@@ -765,7 +765,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                         }
                       }
                     }}
-                    className="h-12 sm:h-13 rounded-2xl bg-gray-100/90 hover:bg-amber-100 text-gray-800 hover:text-amber-950 font-extrabold text-xl active:scale-95 transition-all flex items-center justify-center shadow-2xs cursor-pointer select-none"
+                    className="h-13 sm:h-14 rounded-2xl bg-gray-100 hover:bg-amber-100 active:bg-amber-200 text-gray-800 hover:text-amber-950 font-extrabold text-xl active:scale-90 transition-all flex items-center justify-center shadow-xs cursor-pointer select-none touch-manipulation"
                   >
                     {btn}
                   </button>
@@ -776,7 +776,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               <button
                 type="submit"
                 disabled={pin.length !== 4 || verifyingPin}
-                className="w-full py-3.5 px-6 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-98 text-white font-bold text-base shadow-lg shadow-amber-600/30 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer"
+                className="w-full min-h-[50px] py-3.5 px-6 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-base shadow-lg shadow-amber-600/30 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer touch-manipulation select-none"
               >
                 {verifyingPin
                   ? language === 'hi'

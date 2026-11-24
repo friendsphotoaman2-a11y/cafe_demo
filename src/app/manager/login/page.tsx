@@ -113,7 +113,7 @@ function ManagerLoginForm() {
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-stone-100 text-stone-900 font-bold text-sm shadow-md transition flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer active:scale-95"
+            className="w-full min-h-[48px] py-3.5 px-4 rounded-2xl bg-white hover:bg-stone-100 text-stone-900 font-bold text-sm shadow-md transition flex items-center justify-center gap-3 disabled:opacity-50 cursor-pointer active:scale-95 touch-manipulation select-none"
           >
             {loading ? (
               <Loader2 className="w-5 h-5 animate-spin text-stone-600" />
@@ -151,7 +151,7 @@ function ManagerLoginForm() {
           {/* Dev mode fast-track */}
           <button
             onClick={handleDevBypass}
-            className="w-full py-2.5 px-4 rounded-xl border border-amber-900/50 bg-stone-800/80 hover:bg-stone-800 text-amber-300 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full min-h-[44px] py-2.5 px-4 rounded-xl border border-amber-900/50 bg-stone-800/80 hover:bg-stone-800 active:scale-95 text-amber-300 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer touch-manipulation select-none"
           >
             <span>Enter Dashboard (Development Bypass)</span>
             <ArrowRight className="w-3.5 h-3.5" />

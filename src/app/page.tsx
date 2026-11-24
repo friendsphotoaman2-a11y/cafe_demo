@@ -37,10 +37,10 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link
               href="/manager"
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2"
+              className="min-h-[44px] px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 active:bg-amber-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition flex items-center gap-2 touch-manipulation cursor-pointer select-none"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Manager Portal</span>
+              <ShieldCheck className="w-4 h-4 pointer-events-none" />
+              <span className="pointer-events-none">Manager Portal</span>
             </Link>
           </div>
         </div>
@@ -82,12 +82,12 @@ export default function Home() {
               <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider block mb-2">
                 Simulate Customer Table:
               </span>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 {sampleTables.map(t => (
                   <Link
                     key={t.code}
                     href={`/t/${t.code}`}
-                    className="py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-amber-300 font-semibold text-xs text-center border border-stone-700 transition"
+                    className="min-h-[44px] flex items-center justify-center py-2.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-95 active:bg-stone-900 text-amber-300 font-semibold text-xs sm:text-sm text-center border border-stone-700 transition touch-manipulation cursor-pointer select-none"
                   >
                     Open {t.name}
                   </Link>
@@ -111,10 +111,10 @@ export default function Home() {
 
             <Link
               href="/manager"
-              className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition"
+              className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 active:bg-amber-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition touch-manipulation cursor-pointer select-none"
             >
-              <span>Go to Manager Hub</span>
-              <ArrowRight className="w-4 h-4" />
+              <span className="pointer-events-none">Go to Manager Hub</span>
+              <ArrowRight className="w-4 h-4 pointer-events-none" />
             </Link>
           </div>
 
@@ -133,10 +133,10 @@ export default function Home() {
 
             <Link
               href="/kitchen"
-              className="w-full py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs flex items-center justify-center gap-2 border border-stone-700 transition"
+              className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-95 active:bg-stone-900 text-stone-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-stone-700 transition touch-manipulation cursor-pointer select-none"
             >
-              <span>Open Kitchen Screen</span>
-              <ArrowRight className="w-4 h-4" />
+              <span className="pointer-events-none">Open Kitchen Screen</span>
+              <ArrowRight className="w-4 h-4 pointer-events-none" />
             </Link>
           </div>
         </div>
