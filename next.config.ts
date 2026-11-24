@@ -20,6 +20,17 @@ const assetPrefix = basePath
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath } : {}),
   ...(assetPrefix ? { assetPrefix } : {}),
+  async redirects() {
+    if (!basePath) return [];
+    return [
+      {
+        source: "/",
+        destination: basePath,
+        basePath: false,
+        permanent: false,
+      },
+    ];
+  },
   env: {
     NEXT_PUBLIC_BASE_PATH: basePath || "",
     NEXT_PUBLIC_ASSET_PREFIX: assetPrefix || "",
