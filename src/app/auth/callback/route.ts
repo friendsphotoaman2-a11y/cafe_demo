@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withBasePath } from '@/lib/base-path';
@@ -6,7 +7,9 @@ import { withBasePath } from '@/lib/base-path';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? '/manager';
+  const cookieStore = await cookies();
+  const cookieNext = cookieStore.get('auth_redirect_next')?.value;
+  const next = searchParams.get('next') || cookieNext || '/manager';
 
   if (code) {
     const supabase = await createClient();

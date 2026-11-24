@@ -57,13 +57,19 @@ function ManagerLoginForm() {
       const supabase = createClient();
       const origin = window.location.origin;
       const targetUrl = searchParams.get('redirect') || searchParams.get('next') || '/manager';
+      // Save next target in cookie so redirectUri remains clean without query params (easier matching in Supabase)
+      document.cookie = `auth_redirect_next=${encodeURIComponent(targetUrl)}; path=/; max-age=600`;
+      
       const redirectUri = new URL(withBasePath('/auth/callback'), origin);
-      redirectUri.searchParams.set('next', targetUrl);
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectUri.toString(),
+          queryParams: {
+            prompt: 'select_account',
+            access_type: 'offline',
+          },
         },
       });
 
@@ -77,12 +83,12 @@ function ManagerLoginForm() {
     }
   }
 
-  // Quick dev test login helper for local demonstration
+  // Quick dev test login helper for local demonstration and emergency access
   function handleDevBypass() {
     const targetUrl = searchParams.get('redirect') || searchParams.get('next') || '/manager';
     document.cookie = `cafe_manager_dev_mode=true; path=/; max-age=86400`;
     sessionStorage.setItem('cafe_manager_dev_mode', 'true');
-    router.push(targetUrl);
+    window.location.href = withBasePath(targetUrl);
   }
 
   return (

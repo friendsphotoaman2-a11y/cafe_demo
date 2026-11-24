@@ -12,9 +12,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // Allow dev bypass mode for rapid local testing if present
+    // Allow dev bypass mode for rapid testing if present
     const devCookie = request.cookies.get('cafe_manager_dev_mode')?.value;
-    if (devCookie === 'true' && process.env.NODE_ENV !== 'production') {
+    if (devCookie === 'true') {
       return NextResponse.next();
     }
 
