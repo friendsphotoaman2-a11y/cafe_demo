@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
+  Award,
 } from 'lucide-react';
 import { apiUrl } from '@/lib/base-path';
 import { Bill } from '@/types/database';
@@ -278,6 +279,52 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
         </div>
       )}
 
+      {/* Customer Insights Banner (When searching by phone/customer) */}
+      {searchQuery.trim() && orders.length > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-stone-900 via-stone-900 to-amber-950/40 border border-amber-500/30 flex flex-wrap items-center justify-between gap-4 shadow-lg animate-in fade-in duration-200">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 text-stone-950 flex items-center justify-center font-black text-lg shadow-md shadow-amber-500/20">
+              {orders[0].customer_name ? orders[0].customer_name.charAt(0).toUpperCase() : 'C'}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-extrabold text-white">{orders[0].customer_name || 'Guest'}</span>
+                <span className="text-xs font-mono text-stone-400 bg-stone-950 px-2 py-0.5 rounded-md border border-stone-800">
+                  {orders[0].phone || searchQuery}
+                </span>
+              </div>
+              <p className="text-xs text-stone-400 mt-0.5 flex items-center gap-1.5">
+                <Award className="w-3.5 h-3.5 text-amber-400" />
+                <span>Loyalty Customer • {Math.max(...orders.map(o => o.visit_no || 1), orders.length) >= 5 ? 'Loyalty Free Coffee Eligible' : `Visit ${Math.max(...orders.map(o => o.visit_no || 1), orders.length) % 5}/5 towards Free Coffee`}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-stone-950/90 px-4 py-2 rounded-xl border border-stone-800 text-center">
+              <span className="text-[10px] text-stone-400 uppercase font-bold block">Total Visits</span>
+              <span className="text-base font-black text-amber-400 font-mono">
+                {Math.max(...orders.map(o => o.visit_no || 1), orders.length)} Visits
+              </span>
+            </div>
+            <div className="bg-stone-950/90 px-4 py-2 rounded-xl border border-stone-800 text-center">
+              <span className="text-[10px] text-stone-400 uppercase font-bold block">Total Spent</span>
+              <span className="text-base font-black text-emerald-400 font-mono">
+                ₹{orders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(1)}
+              </span>
+            </div>
+            {orders.filter(o => o.free_visit === 'YES').length > 0 && (
+              <div className="bg-emerald-950/60 px-4 py-2 rounded-xl border border-emerald-500/30 text-center">
+                <span className="text-[10px] text-emerald-300 uppercase font-bold block">Free Coffees</span>
+                <span className="text-base font-black text-emerald-300 font-mono">
+                  {orders.filter(o => o.free_visit === 'YES').length} ☕
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Orders Table */}
       <div className="rounded-2xl border border-stone-800 bg-stone-900/60 overflow-hidden shadow-lg">
         <div className="overflow-x-auto">
@@ -289,6 +336,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                 <th className="py-2.5 px-3">Table</th>
                 <th className="py-2.5 px-3">Customer</th>
                 <th className="py-2.5 px-3">Phone</th>
+                <th className="py-2.5 px-3">Visit #</th>
                 <th className="py-2.5 px-3">Items</th>
                 <th className="py-2.5 px-3">Subtotal</th>
                 <th className="py-2.5 px-3">GST</th>
@@ -300,14 +348,14 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
             <tbody className="divide-y divide-stone-800/50 font-mono">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-stone-500 font-sans">
+                  <td colSpan={12} className="py-12 text-center text-stone-500 font-sans">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
                     <span>Loading orders from Google Sheets...</span>
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-stone-500 font-sans">
+                  <td colSpan={12} className="py-12 text-center text-stone-500 font-sans">
                     <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     <p className="font-bold text-stone-400">No completed orders found.</p>
                     <p className="text-xs text-stone-600 mt-1">Orders sync to Google Sheets when bills are settled.</p>
@@ -330,6 +378,14 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                     </td>
                     <td className="py-2.5 px-3 text-stone-400">
                       {ord.phone || 'N/A'}
+                    </td>
+                    <td className="py-2.5 px-3 font-sans">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-black font-mono">
+                        <span>Visit #{ord.visit_no || 1}</span>
+                        {ord.free_visit === 'YES' && (
+                          <span className="text-[10px] text-emerald-400 font-extrabold ml-1">☕ FREE</span>
+                        )}
+                      </span>
                     </td>
                     <td className="py-2.5 px-3 text-stone-300 font-sans max-w-[180px] truncate" title={ord.items}>
                       {ord.items || 'Items recorded'}

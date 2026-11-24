@@ -174,8 +174,12 @@ export function BillingModal({
     e.preventDefault();
 
     const cleanPhone = normalizePhoneNumber(customerPhone);
-    if (cleanPhone && cleanPhone.length !== 10) {
-      setErrorMsg('Phone number must be exactly 10 digits (or leave empty for guest checkout).');
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setErrorMsg('Customer 10-digit phone number is required to process bill & save to Google Sheets.');
+      return;
+    }
+    if (!customerName.trim()) {
+      setErrorMsg('Customer name is required to process bill.');
       return;
     }
 
@@ -548,8 +552,8 @@ export function BillingModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-medium text-stone-300">
-                      Customer Phone (Optional)
+                    <label className="block text-xs font-bold text-stone-200">
+                      Customer Phone <span className="text-amber-400 font-black">*</span>
                     </label>
                     {lookingUpLoyalty && (
                       <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
@@ -559,30 +563,43 @@ export function BillingModal({
                   </div>
                   <input
                     type="tel"
-                    placeholder="e.g. 98765 43210 or +91..."
+                    required
+                    placeholder="Enter 10-digit number"
                     value={customerPhone}
                     onChange={e => {
                       const clean = normalizePhoneNumber(e.target.value);
                       setCustomerPhone(clean.slice(0, 10));
                     }}
-                    className="w-full px-3 py-2.5 text-sm rounded-xl bg-stone-800 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500 font-mono"
+                    className={`w-full px-3 py-2.5 text-sm rounded-xl bg-stone-800 border text-white focus:outline-hidden font-mono ${
+                      errorMsg && (!customerPhone || normalizePhoneNumber(customerPhone).length !== 10)
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-stone-700 focus:border-amber-500'
+                    }`}
                   />
-                  <span className="text-[10px] text-stone-500 block mt-1">
-                    Normalize: +91 removed, 10 digits
+                  <span className="text-[10px] text-stone-400 block mt-1">
+                    Required for bill, loyalty stamps &amp; Google Sheets
                   </span>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-stone-300 mb-1">
-                    Customer Name
+                  <label className="block text-xs font-bold text-stone-200 mb-1">
+                    Customer Name <span className="text-amber-400 font-black">*</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="Guest / Name"
+                    required
+                    placeholder="e.g. Rahul Sharma"
                     value={customerName}
                     onChange={e => setCustomerName(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm rounded-xl bg-stone-800 border border-stone-700 text-white focus:outline-hidden focus:border-amber-500"
+                    className={`w-full px-3 py-2.5 text-sm rounded-xl bg-stone-800 border text-white focus:outline-hidden ${
+                      errorMsg && !customerName.trim()
+                        ? 'border-red-500 ring-2 ring-red-500/20'
+                        : 'border-stone-700 focus:border-amber-500'
+                    }`}
                   />
+                  <span className="text-[10px] text-stone-400 block mt-1">
+                    Required for invoice &amp; customer directory
+                  </span>
                 </div>
               </div>
 

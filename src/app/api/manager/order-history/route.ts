@@ -168,7 +168,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (orderIdFilter) {
-      filtered = filtered.filter(o => o.order_id.toLowerCase().includes(orderIdFilter));
+      filtered = filtered.filter(o =>
+        o.order_id.toLowerCase().includes(orderIdFilter) ||
+        o.customer_name.toLowerCase().includes(orderIdFilter)
+      );
     }
 
     // Pagination

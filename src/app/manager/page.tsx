@@ -173,6 +173,8 @@ export default function ManagerDashboard() {
   const [realtimeConnected, setRealtimeConnected] = useState(true);
   const [storageStats, setStorageStats] = useState<{ total_files: number; total_size_mb: string } | null>(null);
   const [savingPinToggle, setSavingPinToggle] = useState(false);
+  const [pinToggleConfirmOpen, setPinToggleConfirmOpen] = useState(false);
+  const [pendingPinToggleValue, setPendingPinToggleValue] = useState<boolean | null>(null);
 
   // Cancel item state
   const [cancellingItem, setCancellingItem] = useState<{
@@ -476,24 +478,35 @@ export default function ManagerDashboard() {
     } catch {}
   }
 
-  async function handleToggleMasterPin() {
+  function handleRequestToggleMasterPin() {
     const current = settings.require_pin ?? true;
-    const next = !current;
+    setPendingPinToggleValue(!current);
+    setPinToggleConfirmOpen(true);
+  }
+
+  async function handleConfirmToggleMasterPin() {
+    if (pendingPinToggleValue === null) return;
+    const target = pendingPinToggleValue;
+    setPinToggleConfirmOpen(false);
+    setPendingPinToggleValue(null);
+
+    // Instant optimistic update
     setSavingPinToggle(true);
-    setSettings(prev => ({ ...prev, require_pin: next }));
+    setSettings(prev => ({ ...prev, require_pin: target }));
+
     try {
       const res = await fetch(apiUrl('/api/manager/settings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...settings, require_pin: next }),
+        body: JSON.stringify({ ...settings, require_pin: target }),
       });
       const data = await res.json();
       if (data.success && data.settings) {
         setSettings(data.settings);
       }
     } catch {
-      setSettings(prev => ({ ...prev, require_pin: current }));
-      alert('Failed to update Table PIN mode.');
+      setSettings(prev => ({ ...prev, require_pin: !target }));
+      alert('Failed to update Table PIN mode. Please try again.');
     } finally {
       setSavingPinToggle(false);
     }
@@ -1314,9 +1327,9 @@ export default function ManagerDashboard() {
                 <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
                   <button
                     type="button"
-                    onClick={handleToggleMasterPin}
+                    onClick={handleRequestToggleMasterPin}
                     disabled={savingPinToggle}
-                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden touch-manipulation select-none active:scale-95 ${
                       settings.require_pin ?? true ? 'bg-amber-500' : 'bg-stone-700'
                     }`}
                     title="Toggle Master PIN Requirement"
@@ -3269,6 +3282,75 @@ export default function ManagerDashboard() {
         }}
         onSaved={loadAllData}
       />
+
+      {/* Master PIN Requirement Toggle Confirmation Modal */}
+      {pinToggleConfirmOpen && pendingPinToggleValue !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in select-none">
+          <div className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-3 rounded-2xl shrink-0 ${
+                  pendingPinToggleValue
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                }`}
+              >
+                {pendingPinToggleValue ? <Lock className="w-6 h-6" /> : <Unlock className="w-6 h-6" />}
+              </div>
+              <div>
+                <h3 className="font-black text-base text-white">
+                  {pendingPinToggleValue ? 'Turn Master Table PIN ON?' : 'Turn Master Table PIN OFF?'}
+                </h3>
+                <span
+                  className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    pendingPinToggleValue
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : 'bg-emerald-500/20 text-emerald-300'
+                  }`}
+                >
+                  {pendingPinToggleValue ? 'Require 4-Digit PIN' : 'Instant Direct Access'}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800/80 text-xs text-stone-300 space-y-2 leading-relaxed">
+              {pendingPinToggleValue ? (
+                <p>
+                  Guests will be <strong>required to enter a 4-digit PIN</strong> generated by the manager before they can view the menu or place any orders. Recommended during peak hours.
+                </p>
+              ) : (
+                <p>
+                  Guests will <strong>directly access the ordering menu</strong> upon scanning the QR code without needing a PIN. Anyone who has the link will be able to submit orders.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPinToggleConfirmOpen(false);
+                  setPendingPinToggleValue(null);
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition cursor-pointer active:scale-95 touch-manipulation"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmToggleMasterPin}
+                className={`flex-1 py-3 px-4 rounded-xl font-black text-xs shadow-md transition cursor-pointer active:scale-95 touch-manipulation ${
+                  pendingPinToggleValue
+                    ? 'bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-amber-500/20'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 shadow-emerald-500/20'
+                }`}
+              >
+                {pendingPinToggleValue ? 'Yes, Turn PIN ON' : 'Yes, Turn PIN OFF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Inspected Invoice Modal (Print / PDF / Archive) */}
       {inspectedInvoice && (

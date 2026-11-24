@@ -131,11 +131,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 
-    // Audit log if require_pin or table overrides changed
+    // Audit log asynchronously in background without delaying settings update response
     if (prevRequirePin !== newRequirePin || JSON.stringify(existingMeta.table_pin_overrides) !== JSON.stringify(newOverrides)) {
-      try {
-        await supabase.from('audit_log').insert({
-          action: 'PIN_SETTING_CHANGED',
+      Promise.resolve(
+        supabase.from('audit_logs').insert({
+          action: 'AVAILABILITY_CHANGED',
           actor_email: auth.email || 'manager',
           entity_type: 'SETTINGS',
           entity_id: 'manager_settings',
@@ -144,10 +144,9 @@ export async function POST(req: NextRequest) {
             new_require_pin: newRequirePin,
             table_pin_overrides: newOverrides,
           },
-        });
-      } catch (auditErr) {
-        console.warn('Could not write audit log for PIN change:', auditErr);
-      }
+          created_at: new Date().toISOString(),
+        })
+      ).catch(() => {});
     }
 
     const mergedSettings: ManagerSettings = {
