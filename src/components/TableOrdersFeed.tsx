@@ -226,67 +226,69 @@ export function TableOrdersFeed({
 
   return (
     <div className="space-y-4">
-      {/* 1. "Your Order" Section */}
-      <div className="bg-white rounded-3xl border-2 border-emerald-500/25 p-4 shadow-xs">
-        <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-emerald-100">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center">
-              <Smartphone className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-black text-sm text-stone-900 leading-tight">
-                {language === 'hi' ? 'आपका ऑर्डर' : 'Your Orders'}
-              </h3>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>{language === 'hi' ? 'यह फोन' : 'This Phone'}</span>
-          </span>
-        </div>
-
-        {myOrders.length === 0 ? (
-          <p className="text-xs text-stone-400 italic bg-stone-50 p-4 rounded-2xl border border-dashed border-stone-200 text-center">
-            {language === 'hi'
-              ? 'आपने अभी तक इस फोन से कोई आइटम ऑर्डर नहीं किया है।'
-              : 'You haven’t placed any orders from this phone yet.'}
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {myOrders.map((order, idx) => renderOrderCard(order, true, idx))}
-          </div>
-        )}
-      </div>
-
-      {/* 2. "Others at your table" Section */}
-      {otherOrders.length > 0 && (
-        <div className="bg-white rounded-3xl border border-stone-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-stone-100">
+      <div className={`grid grid-cols-1 gap-4 items-start ${otherOrders.length > 0 ? 'lg:grid-cols-2' : ''}`}>
+        {/* 1. "Your Order" Section */}
+        <div className="bg-white rounded-3xl border-2 border-emerald-500/25 p-4 shadow-xs">
+          <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-emerald-100">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center">
-                <Users className="w-4 h-4" />
+              <div className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center">
+                <Smartphone className="w-4 h-4" />
               </div>
-              <h3 className="font-black text-sm text-stone-800">
-                {language === 'hi' ? 'टेबल के अन्य ऑर्डर' : 'Others at your table'}
-              </h3>
+              <div>
+                <h3 className="font-black text-sm text-stone-900 leading-tight">
+                  {language === 'hi' ? 'आपका ऑर्डर' : 'Your Orders'}
+                </h3>
+              </div>
             </div>
-            <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">
-              {otherOrders.length}{' '}
-              {otherOrders.length > 1
-                ? language === 'hi'
-                  ? 'ऑर्डर्स'
-                  : 'orders'
-                : language === 'hi'
-                ? 'ऑर्डर'
-                : 'order'}
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{language === 'hi' ? 'यह फोन' : 'This Phone'}</span>
             </span>
           </div>
 
-          <div className="space-y-3">
-            {otherOrders.map((order, idx) => renderOrderCard(order, false, idx))}
-          </div>
+          {myOrders.length === 0 ? (
+            <p className="text-xs text-stone-400 italic bg-stone-50 p-4 rounded-2xl border border-dashed border-stone-200 text-center">
+              {language === 'hi'
+                ? 'आपने अभी तक इस फोन से कोई आइटम ऑर्डर नहीं किया है।'
+                : 'You haven’t placed any orders from this phone yet.'}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {myOrders.map((order, idx) => renderOrderCard(order, true, idx))}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* 2. "Others at your table" Section */}
+        {otherOrders.length > 0 && (
+          <div className="bg-white rounded-3xl border border-stone-200 p-4 shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-stone-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </div>
+                <h3 className="font-black text-sm text-stone-800">
+                  {language === 'hi' ? 'टेबल के अन्य ऑर्डर' : 'Others at your table'}
+                </h3>
+              </div>
+              <span className="text-xs font-bold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-full">
+                {otherOrders.length}{' '}
+                {otherOrders.length > 1
+                  ? language === 'hi'
+                    ? 'ऑर्डर्स'
+                    : 'orders'
+                  : language === 'hi'
+                  ? 'ऑर्डर'
+                  : 'order'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {otherOrders.map((order, idx) => renderOrderCard(order, false, idx))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 3. Running Table Bill & Pay at Counter Summary */}
       <div className="p-4 sm:p-5 bg-white rounded-3xl border border-stone-200 shadow-xs space-y-3">
@@ -333,7 +335,7 @@ export function TableOrdersFeed({
           <button
             type="button"
             onClick={onBrowseMenu}
-            className="w-full py-3 rounded-2xl bg-stone-900 hover:bg-stone-800 active:scale-98 text-amber-400 font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+            className="w-full min-h-[44px] py-3 rounded-2xl bg-stone-900 hover:bg-stone-800 active:scale-[0.98] text-amber-400 font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-sm touch-manipulation"
           >
             <UtensilsCrossed className="w-3.5 h-3.5" />
             <span>{language === 'hi' ? 'कुछ और ऑर्डर करें' : 'Order More Items'}</span>

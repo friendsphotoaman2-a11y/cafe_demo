@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiUrl } from '@/lib/base-path';
 import { Bell, X, CheckCircle2, Loader2, Sparkles, Clock } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
@@ -31,6 +31,15 @@ export function CallWaiterModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [isCooldown, setIsCooldown] = useState(false);
   const { language } = useTranslation();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isOpen, loading, onClose]);
 
   if (!isOpen) return null;
 
@@ -117,7 +126,7 @@ export function CallWaiterModal({
   return (
     <div
       onClick={() => !loading && onClose()}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-fade-in select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] animate-fade-in select-none"
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -131,7 +140,7 @@ export function CallWaiterModal({
           type="button"
           onClick={onClose}
           disabled={loading}
-          className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 active:scale-90 transition cursor-pointer disabled:opacity-50"
+          className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 active:scale-90 transition cursor-pointer disabled:opacity-50 touch-manipulation"
           aria-label="Close"
         >
           <X className="w-5 h-5" />

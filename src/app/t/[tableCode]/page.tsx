@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, use } from 'react';
+import React, { useState, useEffect, useMemo, useRef, use } from 'react';
 import confetti from 'canvas-confetti';
 import { createClient } from '@/lib/supabase/client';
 import { MenuItem, Category, Order } from '@/types/database';
@@ -332,6 +332,63 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       }
     }
   }
+
+  const keyboardActionsRef = useRef<{
+    press: (btn: string) => void;
+    submit: () => void;
+    pinLen: number;
+  }>({
+    press: () => {},
+    submit: () => {},
+    pinLen: 0,
+  });
+
+  useEffect(() => {
+    keyboardActionsRef.current = {
+      press: handleKeypadPress,
+      submit: () => handleVerifyPin(),
+      pinLen: pin.length,
+    };
+  });
+
+  // Desktop physical keyboard support for PIN entry & Escape modal close
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === 'Escape') {
+        if (selectedDish) {
+          setSelectedDish(null);
+          return;
+        }
+        if (isCartOpen && !orderingInProgress) {
+          setIsCartOpen(false);
+          return;
+        }
+      }
+
+      if (isPinVerified || isCheckingSession || isSessionEnded || isLocked) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        keyboardActionsRef.current.press(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        keyboardActionsRef.current.press('DEL');
+      } else if (e.key === 'Delete') {
+        e.preventDefault();
+        keyboardActionsRef.current.press('C');
+      } else if (e.key === 'Enter' && keyboardActionsRef.current.pinLen === 4) {
+        e.preventDefault();
+        keyboardActionsRef.current.submit();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isPinVerified, isCheckingSession, isSessionEnded, isLocked, selectedDish, isCartOpen, orderingInProgress]);
 
   // Fetch Menu, Categories, and Settings (Stale-While-Revalidate with sessionStorage)
   const refreshMenu = React.useCallback(async () => {
@@ -713,8 +770,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // -------------------------------------------------------------
   if (isSessionEnded) {
     return (
-      <div className="min-h-screen bg-linear-to-b from-[#fdf8f0] via-white to-amber-50 flex flex-col justify-center items-center p-6 text-center animate-fade-in">
-        <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl border border-amber-200/70 p-8 flex flex-col items-center animate-scale-up">
+      <div className="min-h-[100dvh] bg-linear-to-b from-[#fdf8f0] via-white to-amber-50 flex flex-col justify-center items-center px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center animate-fade-in">
+        <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl border border-amber-200/70 p-6 sm:p-8 flex flex-col items-center animate-scale-up">
           <div className="w-20 h-20 bg-linear-to-br from-emerald-500 to-emerald-600 text-white rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/30 animate-float">
             <CheckCircle2 className="w-10 h-10" />
           </div>
@@ -749,7 +806,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               setPin('');
               setPinError(null);
             }}
-            className="w-full py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer"
+            className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-[0.98] text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer touch-manipulation"
           >
             {language === 'hi' ? 'नया सत्र शुरू करें' : 'Start Fresh Session'}
           </button>
@@ -763,7 +820,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // -------------------------------------------------------------
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen w-full bg-[#faf7f2] flex flex-col items-center justify-center p-5 select-none">
+      <div className="min-h-[100dvh] w-full bg-[#faf7f2] flex flex-col items-center justify-center px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] select-none">
         <div className="w-full max-w-md flex flex-col items-center">
           {/* Animated Coffee Emblem with subtle steam */}
           <div className="relative mb-5">
@@ -811,7 +868,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     const lockMinutes = Math.max(1, Math.ceil(lockCountdown / 60));
 
     return (
-      <div className="min-h-screen w-full bg-linear-to-b from-[#fdf8f0] via-[#faf4ea] to-[#f3e8d7] flex flex-col justify-center items-center p-4 sm:p-6 select-none">
+      <div className="min-h-[100dvh] w-full bg-linear-to-b from-[#fdf8f0] via-[#faf4ea] to-[#f3e8d7] flex flex-col justify-center items-center px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] select-none">
         {/* Top Brand Row */}
         <div className="w-full max-w-sm flex items-center justify-between mb-3.5 px-1 animate-fade-in">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -834,7 +891,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               triggerHaptic(20);
               setLanguage(language === 'en' ? 'hi' : 'en');
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-200 bg-white/90 shadow-xs text-xs font-extrabold text-stone-800 hover:bg-amber-50 active:scale-95 transition cursor-pointer shrink-0"
+            className="min-h-[38px] flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-200 bg-white/90 shadow-xs text-xs font-extrabold text-stone-800 hover:bg-amber-50 active:scale-95 transition cursor-pointer shrink-0 touch-manipulation"
             title="Toggle Hindi / English"
           >
             <Languages className="w-3.5 h-3.5 text-amber-600" />
@@ -847,7 +904,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           {/* Top Accent Ribbon */}
           <div className="h-1.5 w-full bg-linear-to-r from-amber-400 via-orange-500 to-amber-500" />
 
-          <div className="p-6 sm:p-7 text-center flex flex-col">
+          <div className="p-5 sm:p-7 text-center flex flex-col">
             {/* Dynamic Lock -> Check Emblem */}
             <div
               className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-lg transition-all duration-300 ${
@@ -908,7 +965,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                     return (
                       <div
                         key={index}
-                        className={`w-13 h-15 sm:w-15 sm:h-17 rounded-2xl border-2 flex items-center justify-center text-3xl font-black select-none transition-all duration-200 ${
+                        className={`w-13 h-14 sm:w-15 sm:h-16 rounded-2xl border-2 flex items-center justify-center text-3xl font-black select-none transition-all duration-200 ${
                           pinUnlockSuccess
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700 scale-105 ring-4 ring-emerald-500/15'
                             : pinError
@@ -951,7 +1008,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                         type="button"
                         disabled={verifyingPin || pinUnlockSuccess}
                         onClick={() => handleKeypadPress(btn)}
-                        className={`h-12 sm:h-13 rounded-2xl font-black text-xl transition-all duration-100 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 active:translate-y-[2px] active:shadow-none ${
+                        className={`min-h-[50px] sm:h-13 rounded-2xl font-black text-xl transition-all duration-100 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 active:translate-y-[2px] active:shadow-none touch-manipulation ${
                           isClear
                             ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/80 shadow-[0_3px_0_0_rgba(225,29,72,0.12)]'
                             : isDelete
@@ -979,7 +1036,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                     triggerHaptic(40);
                     handleVerifyPin();
                   }}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-linear-to-r from-stone-900 to-stone-800 hover:from-stone-800 hover:to-stone-900 active:scale-98 text-amber-400 font-black text-sm shadow-lg shadow-stone-900/20 transition-all disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-linear-to-r from-stone-900 to-stone-800 hover:from-stone-800 hover:to-stone-900 active:scale-[0.98] text-amber-400 font-black text-sm shadow-lg shadow-stone-900/20 transition-all disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2 touch-manipulation"
                 >
                   {verifyingPin ? (
                     <>
@@ -998,10 +1055,16 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                     </>
                   )}
                 </button>
+
+                <p className="hidden sm:block text-[10px] text-stone-400 font-semibold">
+                  {language === 'hi'
+                    ? 'टिप: आप डेस्कटॉप कीबोर्ड (0–9, Backspace, Enter) से भी पिन डाल सकते हैं'
+                    : 'Tip: You can also type using your desktop keyboard (0–9, Backspace)'}
+                </p>
               </div>
             )}
 
-            <p className="text-[11px] text-stone-400 mt-4 leading-normal font-medium">
+            <p className="text-[11px] text-stone-400 mt-3.5 leading-normal font-medium">
               {language === 'hi'
                 ? 'पिन के लिए अपने सर्वर या कैफे मैनेजर से संपर्क करें।'
                 : 'Ask your server or manager for the 4-digit PIN.'}
@@ -1016,10 +1079,10 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // SCREEN 2: ACTIVE TABLE MENU, CHECKOUT & ORDER TRACKING
   // -------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#faf7f2] pb-32 text-stone-900 font-sans">
+    <div className="min-h-[100dvh] bg-[#faf7f2] pb-[calc(8.5rem+env(safe-area-inset-bottom))] lg:pb-16 text-stone-900 font-sans">
       {/* Top Sticky Glassmorphic Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-stone-200/80 px-3.5 sm:px-5 py-2.5 shadow-2xs">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-stone-200/80 px-3.5 sm:px-5 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 shadow-2xs">
+        <div className="max-w-3xl lg:max-w-6xl mx-auto flex items-center justify-between gap-2">
           {/* Left: Brand Logo, Name, Crisp Non-Wrapping Table Chip & Connection Dot */}
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-linear-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center font-black text-base shadow-sm shrink-0">
@@ -1065,7 +1128,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 triggerHaptic(20);
                 setLanguage(language === 'en' ? 'hi' : 'en');
               }}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 text-xs font-extrabold text-stone-700 hover:bg-stone-100 active:scale-95 transition cursor-pointer whitespace-nowrap"
+              className="min-h-[38px] flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 text-xs font-extrabold text-stone-700 hover:bg-stone-100 active:scale-95 transition cursor-pointer whitespace-nowrap touch-manipulation"
               title="Toggle Hindi / English"
             >
               <Languages className="w-3.5 h-3.5 text-amber-600" />
@@ -1078,7 +1141,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 triggerHaptic(25);
                 setIsCallWaiterOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-extrabold shadow-xs active:scale-95 transition cursor-pointer whitespace-nowrap"
+              className="min-h-[38px] flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-extrabold shadow-xs active:scale-95 transition cursor-pointer whitespace-nowrap touch-manipulation"
             >
               <Bell className="w-3.5 h-3.5 animate-bounce" />
               <span className="hidden sm:inline">{t('common.callWaiter', 'Call Waiter')}</span>
@@ -1090,7 +1153,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
       {/* Smooth Toast Notification on Order Placement */}
       {orderSuccessMessage && (
-        <div className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm bg-linear-to-r from-emerald-600 to-emerald-700 text-white px-4 py-3 rounded-2xl shadow-xl shadow-emerald-950/20 text-xs font-bold flex items-center justify-between gap-3 border border-emerald-400/40 animate-fade-in-up">
+        <div className="fixed top-[calc(4.5rem+env(safe-area-inset-top))] sm:top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm bg-linear-to-r from-emerald-600 to-emerald-700 text-white px-4 py-3 rounded-2xl shadow-xl shadow-emerald-950/20 text-xs font-bold flex items-center justify-between gap-3 border border-emerald-400/40 animate-fade-in-up">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
               <Check className="w-4 h-4 text-white" />
@@ -1100,7 +1163,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           <button
             type="button"
             onClick={() => setOrderSuccessMessage(null)}
-            className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white shrink-0 cursor-pointer"
+            className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white shrink-0 cursor-pointer touch-manipulation"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -1108,15 +1171,15 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       )}
 
       {/* Segmented Tab Bar: Menu vs Orders */}
-      <div className="max-w-3xl mx-auto px-3.5 sm:px-4 pt-3">
-        <div className="bg-stone-200/75 p-1 rounded-2xl flex items-center text-xs font-extrabold shadow-inner">
+      <div className="max-w-3xl lg:max-w-6xl mx-auto px-3.5 sm:px-5 pt-3">
+        <div className="bg-stone-200/75 p-1 rounded-2xl flex items-center text-xs font-extrabold shadow-inner max-w-md mx-auto lg:mx-0">
           <button
             type="button"
             onClick={() => {
               triggerHaptic(20);
               setActiveTab('menu');
             }}
-            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`flex-1 min-h-[40px] py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer touch-manipulation ${
               activeTab === 'menu'
                 ? 'bg-white text-stone-900 shadow-sm'
                 : 'text-stone-600 hover:text-stone-900'
@@ -1132,7 +1195,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               triggerHaptic(20);
               setActiveTab('orders');
             }}
-            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`flex-1 min-h-[40px] py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer touch-manipulation ${
               activeTab === 'orders'
                 ? 'bg-white text-stone-900 shadow-sm'
                 : 'text-stone-600 hover:text-stone-900'
@@ -1156,381 +1219,595 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       </div>
 
       {/* Main Content Area */}
-      <main className="max-w-3xl mx-auto px-3.5 sm:px-4 pt-3.5 space-y-3.5">
+      <main className="max-w-3xl lg:max-w-6xl mx-auto px-3.5 sm:px-5 pt-3.5 space-y-3.5">
         {activeTab === 'menu' ? (
-          <div className="space-y-3.5 animate-fade-in">
-            {/* Search Input with Instant Clear */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                placeholder={language === 'hi' ? 'मेनू में खोजें (कॉफ़ी, सैंडविच, चाट)...' : 'Search items, coffee, bites...'}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-2xl border border-stone-200/90 bg-white focus:outline-hidden focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-2xs transition"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(15);
-                    setSearchQuery('');
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer"
-                  aria-label="Clear search"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Diet Filter & Price Sort Bar */}
-            <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 scrollbar-none">
-              <div className="flex items-center bg-white p-1 rounded-2xl border border-stone-200/90 shadow-2xs shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(20);
-                    setDietFilter('all');
-                  }}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
-                    dietFilter === 'all'
-                      ? 'bg-stone-900 text-amber-400 shadow-xs'
-                      : 'text-stone-500 hover:text-stone-900'
-                  }`}
-                >
-                  {language === 'hi' ? 'सभी' : 'All'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(20);
-                    setDietFilter('veg');
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
-                    dietFilter === 'veg'
-                      ? 'bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/35'
-                      : 'text-stone-600 hover:text-emerald-700'
-                  }`}
-                >
-                  <VegNonVegBadge isVeg={true} size="sm" />
-                  <span>{language === 'hi' ? 'वेज़' : 'Veg'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(20);
-                    setDietFilter('nonveg');
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
-                    dietFilter === 'nonveg'
-                      ? 'bg-rose-50 text-rose-800 ring-2 ring-rose-500/35'
-                      : 'text-stone-600 hover:text-rose-700'
-                  }`}
-                >
-                  <VegNonVegBadge isVeg={false} size="sm" />
-                  <span>{language === 'hi' ? 'नॉन-वेज़' : 'Non-Veg'}</span>
-                </button>
+          <div className="lg:grid lg:grid-cols-12 lg:gap-7 lg:items-start animate-fade-in">
+            {/* LEFT / PRIMARY MENU COLUMN */}
+            <div className="lg:col-span-8 space-y-3.5">
+              {/* Search Input with Instant Clear (iOS text-base to prevent auto-zoom) */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder={language === 'hi' ? 'मेनू में खोजें (कॉफ़ी, सैंडविच, चाट)...' : 'Search items, coffee, bites...'}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-11 py-2.5 text-base sm:text-sm rounded-2xl border border-stone-200/90 bg-white focus:outline-hidden focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-2xs transition"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(15);
+                      setSearchQuery('');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer touch-manipulation"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(20);
-                    setSortBy(
-                      sortBy === 'recommended'
-                        ? 'price_asc'
-                        : sortBy === 'price_asc'
-                        ? 'price_desc'
-                        : 'recommended'
-                    );
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold transition shadow-2xs cursor-pointer whitespace-nowrap ${
-                    sortBy !== 'recommended'
-                      ? 'bg-amber-50 border-amber-300 text-amber-950 ring-2 ring-amber-400/20'
-                      : 'bg-white border-stone-200/90 text-stone-700 hover:bg-stone-50'
-                  }`}
-                >
-                  <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" />
-                  <span>
-                    {sortBy === 'price_asc'
-                      ? language === 'hi'
-                        ? 'कम से ज्यादा'
-                        : 'Price: Low → High'
-                      : sortBy === 'price_desc'
-                      ? language === 'hi'
-                        ? 'ज्यादा से कम'
-                        : 'Price: High → Low'
-                      : language === 'hi'
-                      ? 'कीमत क्रम'
-                      : 'Sort Price'}
-                  </span>
-                </button>
-              </div>
-            </div>
+              {/* Diet Filter & Price Sort Bar */}
+              <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                <div className="flex items-center bg-white p-1 rounded-2xl border border-stone-200/90 shadow-2xs shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(20);
+                      setDietFilter('all');
+                    }}
+                    className={`min-h-[34px] px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer touch-manipulation ${
+                      dietFilter === 'all'
+                        ? 'bg-stone-900 text-amber-400 shadow-xs'
+                        : 'text-stone-500 hover:text-stone-900'
+                    }`}
+                  >
+                    {language === 'hi' ? 'सभी' : 'All'}
+                  </button>
 
-            {/* Category Chips Horizontal Scroll */}
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic(20);
-                  setSelectedCategory('all');
-                }}
-                className={`px-4 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all shadow-2xs cursor-pointer active:scale-95 ${
-                  selectedCategory === 'all'
-                    ? 'bg-linear-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/20'
-                    : 'bg-white text-stone-700 border border-stone-200/90 hover:border-amber-300'
-                }`}
-              >
-                {language === 'hi' ? 'सभी आइटम' : 'All Items'}
-              </button>
-              {categories.map(cat => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(20);
+                      setDietFilter('veg');
+                    }}
+                    className={`min-h-[34px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer touch-manipulation ${
+                      dietFilter === 'veg'
+                        ? 'bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/35'
+                        : 'text-stone-600 hover:text-emerald-700'
+                    }`}
+                  >
+                    <VegNonVegBadge isVeg={true} size="sm" />
+                    <span>{language === 'hi' ? 'वेज़' : 'Veg'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(20);
+                      setDietFilter('nonveg');
+                    }}
+                    className={`min-h-[34px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer touch-manipulation ${
+                      dietFilter === 'nonveg'
+                        ? 'bg-rose-50 text-rose-800 ring-2 ring-rose-500/35'
+                        : 'text-stone-600 hover:text-rose-700'
+                    }`}
+                  >
+                    <VegNonVegBadge isVeg={false} size="sm" />
+                    <span>{language === 'hi' ? 'नॉन-वेज़' : 'Non-Veg'}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(20);
+                      setSortBy(
+                        sortBy === 'recommended'
+                          ? 'price_asc'
+                          : sortBy === 'price_asc'
+                          ? 'price_desc'
+                          : 'recommended'
+                      );
+                    }}
+                    className={`min-h-[38px] flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold transition shadow-2xs cursor-pointer whitespace-nowrap touch-manipulation ${
+                      sortBy !== 'recommended'
+                        ? 'bg-amber-50 border-amber-300 text-amber-950 ring-2 ring-amber-400/20'
+                        : 'bg-white border-stone-200/90 text-stone-700 hover:bg-stone-50'
+                    }`}
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" />
+                    <span>
+                      {sortBy === 'price_asc'
+                        ? language === 'hi'
+                          ? 'कम से ज्यादा'
+                          : 'Price: Low → High'
+                        : sortBy === 'price_desc'
+                        ? language === 'hi'
+                          ? 'ज्यादा से कम'
+                          : 'Price: High → Low'
+                        : language === 'hi'
+                        ? 'कीमत क्रम'
+                        : 'Sort Price'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Category Chips (Horizontal scroll on phone, clean wrap on desktop) */}
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none lg:flex-wrap lg:overflow-visible snap-x">
                 <button
                   type="button"
-                  key={cat.id}
                   onClick={() => {
                     triggerHaptic(20);
-                    setSelectedCategory(cat.id);
+                    setSelectedCategory('all');
                   }}
-                  className={`px-4 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all shadow-2xs cursor-pointer active:scale-95 ${
-                    selectedCategory === cat.id
+                  className={`min-h-[36px] px-4 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-all shadow-2xs cursor-pointer active:scale-95 snap-start touch-manipulation ${
+                    selectedCategory === 'all'
                       ? 'bg-linear-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/20'
                       : 'bg-white text-stone-700 border border-stone-200/90 hover:border-amber-300'
                   }`}
                 >
-                  {language === 'hi' ? cat.name_hi : cat.name_en}
+                  {language === 'hi' ? 'सभी आइटम' : 'All Items'}
                 </button>
-              ))}
-            </div>
-
-            {/* Live Table Order Activity Quick Card */}
-            {tableOrders.length > 0 && (
-              <div
-                onClick={() => {
-                  triggerHaptic(25);
-                  setIsLiveOrdersOpen(true);
-                }}
-                className="p-3.5 bg-linear-to-r from-stone-900 via-stone-900 to-amber-950 text-white border border-amber-500/30 rounded-2xl flex items-center justify-between cursor-pointer shadow-md hover:border-amber-400 active:scale-[0.99] transition"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 text-amber-400 flex items-center justify-center font-black text-xs shrink-0">
-                    {tableOrders.reduce((sum, o) => sum + (o.order_items?.length || 0), 0)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-extrabold text-white flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                      <span className="truncate">
-                        {language === 'hi' ? 'टेबल के लाइव ऑर्डर' : 'Shared Table Live Activity'}
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-stone-300 truncate mt-0.5">
-                      {hasReadyOrder
-                        ? language === 'hi'
-                          ? 'आपका ऑर्डर परोसने के लिए तैयार है!'
-                          : 'An order is Ready to Serve at your table!'
-                        : language === 'hi'
-                        ? 'किचन स्टेटस देखने के लिए टैप करें'
-                        : 'Tap to track kitchen progress in realtime'}
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xs font-black text-amber-400 shrink-0 ml-2 flex items-center gap-1">
-                  <span>{language === 'hi' ? 'देखें' : 'Track'}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </span>
-              </div>
-            )}
-
-            {/* Menu Items Grid with Staggered Entrance */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-0.5">
-              {filteredItems.map((item, idx) => {
-                const isAvailable = isItemAvailableToday(item);
-                const cartQty = cart.find(c => c.item.id === item.id)?.quantity || 0;
-
-                const primaryName = language === 'hi' ? item.name_hi : item.name_en;
-                const secondaryName = language === 'hi' ? item.name_en : item.name_hi;
-                const description =
-                  language === 'hi'
-                    ? item.description_hi || item.description_en
-                    : item.description_en || item.description_hi;
-
-                return (
-                  <div
-                    key={item.id}
-                    style={{ animationDelay: `${Math.min(idx * 35, 240)}ms` }}
-                    className={`bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs transition-all relative overflow-hidden animate-fade-in-up ${
-                      !isAvailable
-                        ? 'opacity-65 grayscale-[35%] bg-stone-50 border-stone-200 border-dashed'
-                        : cartQty > 0
-                        ? 'border-amber-400 ring-2 ring-amber-500/15 shadow-sm'
-                        : 'border-stone-200/80 hover:border-amber-300'
+                {categories.map(cat => (
+                  <button
+                    type="button"
+                    key={cat.id}
+                    onClick={() => {
+                      triggerHaptic(20);
+                      setSelectedCategory(cat.id);
+                    }}
+                    className={`min-h-[36px] px-4 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition-all shadow-2xs cursor-pointer active:scale-95 snap-start touch-manipulation ${
+                      selectedCategory === cat.id
+                        ? 'bg-linear-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/20'
+                        : 'bg-white text-stone-700 border border-stone-200/90 hover:border-amber-300'
                     }`}
                   >
-                    {/* Dish Thumbnail (Tap opens Quick View Sheet) */}
-                    <button
-                      type="button"
-                      disabled={!isAvailable}
-                      onClick={() => {
-                        triggerHaptic(20);
-                        const existingCartNote = cart.find(c => c.item.id === item.id)?.notes || '';
-                        setDishModalNote(existingCartNote);
-                        setSelectedDish(item);
-                      }}
-                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 bg-amber-50/70 relative flex items-center justify-center border border-stone-100 cursor-pointer disabled:cursor-default group"
-                    >
-                      {item.image_url && !failedImages[item.id] ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.image_url}
-                          alt={primaryName}
-                          loading="lazy"
-                          onError={() => setFailedImages(prev => ({ ...prev, [item.id]: true }))}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-amber-600/70 bg-amber-50/80 p-2 text-center">
-                          <UtensilsCrossed className="w-6 h-6 text-amber-500 mb-1" />
-                          <span className="text-[10px] font-bold text-amber-700/60 leading-none">
-                            Brew &amp; Bites
-                          </span>
-                        </div>
-                      )}
+                    {language === 'hi' ? cat.name_hi : cat.name_en}
+                  </button>
+                ))}
+              </div>
 
-                      {/* Corner In-Cart Quantity Badge */}
-                      {cartQty > 0 && isAvailable && (
-                        <span
-                          key={cartQty}
-                          className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-lg bg-stone-900/90 text-amber-400 text-[10px] font-black shadow-md animate-pop"
-                        >
-                          {cartQty}×
+              {/* Live Table Order Activity Quick Card */}
+              {tableOrders.length > 0 && (
+                <div
+                  onClick={() => {
+                    triggerHaptic(25);
+                    setIsLiveOrdersOpen(true);
+                  }}
+                  className="p-3.5 bg-linear-to-r from-stone-900 via-stone-900 to-amber-950 text-white border border-amber-500/30 rounded-2xl flex items-center justify-between cursor-pointer shadow-md hover:border-amber-400 active:scale-[0.99] transition touch-manipulation"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 text-amber-400 flex items-center justify-center font-black text-xs shrink-0">
+                      {tableOrders.reduce((sum, o) => sum + (o.order_items?.length || 0), 0)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-extrabold text-white flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        <span className="truncate">
+                          {language === 'hi' ? 'टेबल के लाइव ऑर्डर' : 'Shared Table Live Activity'}
                         </span>
-                      )}
+                      </p>
+                      <p className="text-[11px] text-stone-300 truncate mt-0.5">
+                        {hasReadyOrder
+                          ? language === 'hi'
+                            ? 'आपका ऑर्डर परोसने के लिए तैयार है!'
+                            : 'An order is Ready to Serve at your table!'
+                          : language === 'hi'
+                          ? 'किचन स्टेटस देखने के लिए टैप करें'
+                          : 'Tap to track kitchen progress in realtime'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-black text-amber-400 shrink-0 ml-2 flex items-center gap-1">
+                    <span>{language === 'hi' ? 'देखें' : 'Track'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+              )}
 
-                      {/* Unavailable Overlay */}
-                      {!isAvailable && (
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-1.5 text-center">
-                          <span className="text-[10px] font-bold text-white uppercase tracking-wider leading-tight">
-                            {language === 'hi' ? 'आज उपलब्ध नहीं है' : 'Sold Out Today'}
-                          </span>
-                        </div>
-                      )}
-                    </button>
+              {/* Menu Items Grid with Staggered Entrance */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-0.5">
+                {filteredItems.map((item, idx) => {
+                  const isAvailable = isItemAvailableToday(item);
+                  const cartQty = cart.find(c => c.item.id === item.id)?.quantity || 0;
 
-                    {/* Dish Details & Price */}
-                    <div className="flex-1 flex flex-col justify-between min-w-0">
-                      <div
+                  const primaryName = language === 'hi' ? item.name_hi : item.name_en;
+                  const secondaryName = language === 'hi' ? item.name_en : item.name_hi;
+                  const description =
+                    language === 'hi'
+                      ? item.description_hi || item.description_en
+                      : item.description_en || item.description_hi;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{ animationDelay: `${Math.min(idx * 35, 240)}ms` }}
+                      className={`bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs transition-all relative overflow-hidden animate-fade-in-up ${
+                        !isAvailable
+                          ? 'opacity-65 grayscale-[35%] bg-stone-50 border-stone-200 border-dashed'
+                          : cartQty > 0
+                          ? 'border-amber-400 ring-2 ring-amber-500/15 shadow-sm'
+                          : 'border-stone-200/80 hover:border-amber-300 sm:hover:shadow-md sm:hover:-translate-y-0.5'
+                      }`}
+                    >
+                      {/* Dish Thumbnail (Tap opens Quick View Sheet) */}
+                      <button
+                        type="button"
+                        disabled={!isAvailable}
                         onClick={() => {
-                          if (!isAvailable) return;
                           triggerHaptic(20);
                           const existingCartNote = cart.find(c => c.item.id === item.id)?.notes || '';
                           setDishModalNote(existingCartNote);
                           setSelectedDish(item);
                         }}
-                        className={isAvailable ? 'cursor-pointer' : ''}
+                        className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 bg-amber-50/70 relative flex items-center justify-center border border-stone-100 cursor-pointer disabled:cursor-default group touch-manipulation"
                       >
-                        <div className="flex items-start justify-between gap-1.5">
-                          <div className="flex items-start gap-1.5 min-w-0">
-                            <span className="mt-0.5 shrink-0">
-                              <VegNonVegBadge isVeg={item.is_veg} size="sm" />
+                        {item.image_url && !failedImages[item.id] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.image_url}
+                            alt={primaryName}
+                            loading="lazy"
+                            onError={() => setFailedImages(prev => ({ ...prev, [item.id]: true }))}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-amber-600/70 bg-amber-50/80 p-2 text-center">
+                            <UtensilsCrossed className="w-6 h-6 text-amber-500 mb-1" />
+                            <span className="text-[10px] font-bold text-amber-700/60 leading-none">
+                              Brew &amp; Bites
                             </span>
-                            <h3 className="font-extrabold text-sm text-stone-900 leading-snug line-clamp-1">
-                              {primaryName}
-                            </h3>
                           </div>
+                        )}
+
+                        {/* Corner In-Cart Quantity Badge */}
+                        {cartQty > 0 && isAvailable && (
+                          <span
+                            key={cartQty}
+                            className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-lg bg-stone-900/90 text-amber-400 text-[10px] font-black shadow-md animate-pop"
+                          >
+                            {cartQty}×
+                          </span>
+                        )}
+
+                        {/* Unavailable Overlay */}
+                        {!isAvailable && (
+                          <div className="absolute inset-0 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-1.5 text-center">
+                            <span className="text-[10px] font-bold text-white uppercase tracking-wider leading-tight">
+                              {language === 'hi' ? 'आज उपलब्ध नहीं है' : 'Sold Out Today'}
+                            </span>
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Dish Details & Price */}
+                      <div className="flex-1 flex flex-col justify-between min-w-0">
+                        <div
+                          onClick={() => {
+                            if (!isAvailable) return;
+                            triggerHaptic(20);
+                            const existingCartNote = cart.find(c => c.item.id === item.id)?.notes || '';
+                            setDishModalNote(existingCartNote);
+                            setSelectedDish(item);
+                          }}
+                          className={isAvailable ? 'cursor-pointer' : ''}
+                        >
+                          <div className="flex items-start justify-between gap-1.5">
+                            <div className="flex items-start gap-1.5 min-w-0">
+                              <span className="mt-0.5 shrink-0">
+                                <VegNonVegBadge isVeg={item.is_veg} size="sm" />
+                              </span>
+                              <h3 className="font-extrabold text-sm text-stone-900 leading-snug line-clamp-1">
+                                {primaryName}
+                              </h3>
+                            </div>
+                          </div>
+
+                          <p className="text-[11px] text-stone-400 font-medium line-clamp-1 ml-5">
+                            {secondaryName}
+                          </p>
+
+                          {description && (
+                            <p className="text-xs text-stone-500 line-clamp-2 mt-1 leading-relaxed">
+                              {description}
+                            </p>
+                          )}
                         </div>
 
-                        <p className="text-[11px] text-stone-400 font-medium line-clamp-1 ml-5">
-                          {secondaryName}
-                        </p>
+                        {/* Price & Stepper Row */}
+                        <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-stone-100">
+                          <span className="text-base font-black text-stone-900 font-mono">
+                            ₹{item.price}
+                          </span>
 
-                        {description && (
-                          <p className="text-xs text-stone-500 line-clamp-2 mt-1 leading-relaxed">
-                            {description}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Price & Stepper Row */}
-                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-stone-100">
-                        <span className="text-base font-black text-stone-900 font-mono">
-                          ₹{item.price}
-                        </span>
-
-                        {isAvailable ? (
-                          cartQty > 0 ? (
-                            <div className="flex items-center gap-1.5 bg-stone-900 text-white rounded-xl px-1.5 py-1 shadow-sm animate-pop">
+                          {isAvailable ? (
+                            cartQty > 0 ? (
+                              <div className="flex items-center gap-1 bg-stone-900 text-white rounded-xl p-1 shadow-sm animate-pop">
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantity(item.id, -1)}
+                                  className="w-8 h-8 flex items-center justify-center font-bold hover:bg-stone-800 active:scale-90 rounded-lg text-amber-400 transition cursor-pointer touch-manipulation"
+                                  aria-label="Decrease quantity"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <span key={cartQty} className="text-xs font-black w-5 text-center text-white animate-pop font-mono">
+                                  {cartQty}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => updateQuantity(item.id, 1)}
+                                  className="w-8 h-8 flex items-center justify-center font-bold bg-amber-500 hover:bg-amber-400 active:scale-90 text-stone-950 rounded-lg transition cursor-pointer touch-manipulation"
+                                  aria-label="Increase quantity"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
                               <button
                                 type="button"
-                                onClick={() => updateQuantity(item.id, -1)}
-                                className="w-6 h-6 flex items-center justify-center font-bold hover:bg-stone-800 active:scale-90 rounded-lg text-amber-400 transition cursor-pointer"
-                                aria-label="Decrease quantity"
-                              >
-                                <Minus className="w-3.5 h-3.5" />
-                              </button>
-                              <span key={cartQty} className="text-xs font-black w-5 text-center text-white animate-pop font-mono">
-                                {cartQty}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(item.id, 1)}
-                                className="w-6 h-6 flex items-center justify-center font-bold bg-amber-500 hover:bg-amber-400 active:scale-90 text-stone-950 rounded-lg transition cursor-pointer"
-                                aria-label="Increase quantity"
+                                onClick={() => addToCart(item)}
+                                className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-500 hover:text-white active:scale-95 text-amber-900 border border-amber-200 text-xs font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer touch-manipulation"
                               >
                                 <Plus className="w-3.5 h-3.5" />
+                                <span>{language === 'hi' ? 'जोड़ें' : 'Add'}</span>
                               </button>
-                            </div>
+                            )
                           ) : (
                             <button
                               type="button"
-                              onClick={() => addToCart(item)}
-                              className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-500 hover:text-white active:scale-95 text-amber-900 border border-amber-200 text-xs font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                              disabled
+                              className="px-2.5 py-1.5 rounded-xl bg-stone-100 text-stone-400 text-[11px] font-bold cursor-not-allowed border border-stone-200 flex items-center gap-1"
                             >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>{language === 'hi' ? 'जोड़ें' : 'Add'}</span>
+                              <Ban className="w-3 h-3 shrink-0" />
+                              <span>{language === 'hi' ? 'उपलब्ध नहीं' : 'Unavailable'}</span>
                             </button>
-                          )
-                        ) : (
-                          <button
-                            type="button"
-                            disabled
-                            className="px-2.5 py-1.5 rounded-xl bg-stone-100 text-stone-400 text-[11px] font-bold cursor-not-allowed border border-stone-200 flex items-center gap-1"
-                          >
-                            <Ban className="w-3 h-3 shrink-0" />
-                            <span>{language === 'hi' ? 'उपलब्ध नहीं' : 'Unavailable'}</span>
-                          </button>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              {filteredItems.length === 0 && (
+                <div className="py-12 px-6 text-center bg-white rounded-3xl border border-stone-200/80 shadow-2xs animate-fade-in">
+                  <UtensilsCrossed className="w-10 h-10 mx-auto mb-2.5 text-stone-300" />
+                  <p className="text-sm font-bold text-stone-600">
+                    {language === 'hi' ? 'कोई व्यंजन नहीं मिला।' : 'No dishes match your filters.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic(20);
+                      setSearchQuery('');
+                      setSelectedCategory('all');
+                      setDietFilter('all');
+                      setSortBy('recommended');
+                    }}
+                    className="mt-3 px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-extrabold transition cursor-pointer touch-manipulation"
+                  >
+                    {language === 'hi' ? 'सभी फ़िल्टर हटाएं' : 'Reset All Filters'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {filteredItems.length === 0 && (
-              <div className="py-12 px-6 text-center bg-white rounded-3xl border border-stone-200/80 shadow-2xs animate-fade-in">
-                <UtensilsCrossed className="w-10 h-10 mx-auto mb-2.5 text-stone-300" />
-                <p className="text-sm font-bold text-stone-600">
-                  {language === 'hi' ? 'कोई व्यंजन नहीं मिला।' : 'No dishes match your filters.'}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic(20);
-                    setSearchQuery('');
-                    setSelectedCategory('all');
-                    setDietFilter('all');
-                    setSortBy('recommended');
-                  }}
-                  className="mt-3 px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-extrabold transition cursor-pointer"
-                >
-                  {language === 'hi' ? 'सभी फ़िल्टर हटाएं' : 'Reset All Filters'}
-                </button>
+            {/* RIGHT DESKTOP STICKY ORDER CART PANEL */}
+            <aside className="hidden lg:block lg:col-span-4 lg:sticky lg:top-[calc(5.25rem+env(safe-area-inset-top))]">
+              <div className="bg-white rounded-3xl border border-stone-200/90 shadow-lg overflow-hidden flex flex-col">
+                {/* Panel Header */}
+                <div className="px-5 py-4 bg-stone-900 text-white flex items-center justify-between border-b border-amber-500/20">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-sm tracking-tight">
+                        {language === 'hi' ? 'आपकी कार्ट' : 'Your Order Cart'}
+                      </h3>
+                      <p className="text-[11px] text-stone-400 font-medium">
+                        {tableNumber} • {cartItemCount} {language === 'hi' ? 'आइटम' : cartItemCount === 1 ? 'item' : 'items'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {cart.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={orderingInProgress}
+                      onClick={() => {
+                        triggerHaptic(45);
+                        setCart([]);
+                      }}
+                      className="text-[11px] font-bold text-rose-300 hover:text-rose-200 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 transition cursor-pointer"
+                    >
+                      {language === 'hi' ? 'साफ करें' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+
+                {cart.length === 0 ? (
+                  <div className="p-7 text-center flex flex-col items-center">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200/70 text-amber-500 flex items-center justify-center mb-3">
+                      <ShoppingBag className="w-7 h-7" />
+                    </div>
+                    <h4 className="font-black text-sm text-stone-900">
+                      {language === 'hi' ? 'आपकी कार्ट खाली है' : 'Your cart is empty'}
+                    </h4>
+                    <p className="text-xs text-stone-500 mt-1 leading-relaxed max-w-[240px]">
+                      {language === 'hi'
+                        ? 'मेनू से किसी भी डिश पर + जोड़ें दबाकर अपना ऑर्डर शुरू करें।'
+                        : 'Click "+ Add" on any item from the menu to start your round.'}
+                    </p>
+                    {tableOrders.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('orders')}
+                        className="mt-4 w-full py-2.5 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 text-amber-400 text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        <span>
+                          {language === 'hi'
+                            ? `लाइव ऑर्डर देखें (${tableOrders.length})`
+                            : `View Table Orders (${tableOrders.length})`}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    <div className="p-4 space-y-2.5 max-h-[42dvh] overflow-y-auto bg-[#faf7f2]">
+                      {cartError && (
+                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 font-bold flex items-start gap-2 animate-shake">
+                          <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <span>{cartError}</span>
+                        </div>
+                      )}
+
+                      {cart.map(c => (
+                        <div
+                          key={c.item.id}
+                          className="p-3 rounded-2xl border border-stone-200/80 bg-white shadow-2xs space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-1.5 min-w-0">
+                              <span className="mt-1 shrink-0">
+                                <VegNonVegBadge isVeg={c.item.is_veg} size="sm" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-extrabold text-xs text-stone-900 line-clamp-1">
+                                  {language === 'hi' ? c.item.name_hi : c.item.name_en}
+                                </p>
+                                <span className="text-[10px] text-stone-400 font-mono">
+                                  ₹{c.item.price} each
+                                </span>
+                              </div>
+                            </div>
+                            <span className="font-black text-xs text-stone-900 font-mono shrink-0">
+                              ₹{c.item.price * c.quantity}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                              {NOTE_PRESETS.slice(0, 2).map(preset => {
+                                const text = language === 'hi' ? preset.hi : preset.en;
+                                const active = c.notes.toLowerCase().includes(text.toLowerCase());
+                                return (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => appendNotePreset(c.item.id, c.notes, text)}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap transition cursor-pointer ${
+                                      active
+                                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                        : 'bg-stone-100 text-stone-600 hover:bg-amber-50 border border-stone-200/70'
+                                    }`}
+                                  >
+                                    + {text}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <div className="flex items-center gap-1 bg-stone-900 text-white rounded-xl p-0.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(c.item.id, -1)}
+                                className="w-7 h-7 flex items-center justify-center hover:bg-stone-800 rounded-lg text-amber-400 transition cursor-pointer"
+                                aria-label="Remove or decrease"
+                              >
+                                {c.quantity === 1 ? <Trash2 className="w-3 h-3 text-rose-400" /> : <Minus className="w-3 h-3" />}
+                              </button>
+                              <span className="text-xs font-black w-4 text-center font-mono">
+                                {c.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(c.item.id, 1)}
+                                className="w-7 h-7 flex items-center justify-center bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-lg transition cursor-pointer"
+                                aria-label="Increase"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            maxLength={150}
+                            placeholder={language === 'hi' ? 'विशेष निर्देश...' : 'Cooking notes...'}
+                            value={c.notes}
+                            onChange={e => updateItemNotes(c.item.id, e.target.value)}
+                            className="w-full text-xs px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Desktop Summary & Place Order CTA */}
+                    <div className="p-4 bg-white border-t border-stone-200 space-y-3">
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between text-stone-500 font-semibold">
+                          <span>{language === 'hi' ? 'आइटम कुल' : 'Items Subtotal'}</span>
+                          <span className="font-mono text-stone-800">₹{cartTotal}</span>
+                        </div>
+                        {taxEnabled && (
+                          <div className="flex justify-between text-stone-500 font-semibold">
+                            <span>GST ({gstRatePercent}%)</span>
+                            <span className="text-emerald-700 font-bold font-mono">+₹{gstAmount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center text-sm font-black text-stone-900 pt-1.5 border-t border-dashed border-stone-200">
+                          <span>{language === 'hi' ? 'इस राउंड का कुल' : 'Round Total'}</span>
+                          <span className="text-amber-700 text-base font-mono">
+                            ₹{taxEnabled ? grandTotal.toFixed(2) : cartTotal}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-950 flex items-center gap-2 font-semibold">
+                        <Receipt className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        <span>
+                          {language === 'hi'
+                            ? 'काउंटर बिलिंग • डाइनिंग के बाद भुगतान'
+                            : 'Counter Billing • Settle bill after dining'}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={orderingInProgress || cart.length === 0}
+                        onClick={handlePlaceOrder}
+                        className="w-full min-h-[46px] py-3 px-4 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-[0.98] text-white font-black text-sm shadow-lg shadow-amber-500/25 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {orderingInProgress ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>{language === 'hi' ? 'भेजा जा रहा है...' : 'Sending to Kitchen...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            <span>
+                              {language === 'hi'
+                                ? `ऑर्डर भेजें (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`
+                                : `Place Order (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </aside>
           </div>
         ) : (
           /* ORDERS TAB: REALTIME TRACKER & TABLE FEED */
@@ -1554,12 +1831,17 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       {selectedDish && (
         <div
           onClick={() => setSelectedDish(null)}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-fade-in"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="w-full max-w-md rounded-t-[30px] sm:rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col animate-slide-up max-h-[88vh]"
+            className="w-full max-w-md rounded-t-[30px] sm:rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col animate-slide-up sm:animate-scale-up max-h-[90dvh]"
           >
+            {/* Mobile Drag Handle Pill */}
+            <div className="sm:hidden absolute top-2 inset-x-0 z-20 flex justify-center pointer-events-none">
+              <span className="w-10 h-1 rounded-full bg-white/75 shadow-sm" />
+            </div>
+
             {/* Photo Banner */}
             <div className="relative h-52 sm:h-56 bg-amber-50 shrink-0">
               {selectedDish.image_url && !failedImages[selectedDish.id] ? (
@@ -1579,7 +1861,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               <button
                 type="button"
                 onClick={() => setSelectedDish(null)}
-                className="absolute top-3.5 right-3.5 w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 active:scale-90 flex items-center justify-center transition cursor-pointer"
+                className="absolute top-3.5 right-3.5 w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 active:scale-90 flex items-center justify-center transition cursor-pointer touch-manipulation"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -1655,7 +1937,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                             setDishModalNote(next.slice(0, 150));
                           }
                         }}
-                        className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition cursor-pointer ${
+                        className={`text-xs px-3 py-1.5 rounded-full font-bold transition cursor-pointer touch-manipulation ${
                           active
                             ? 'bg-stone-900 text-amber-400'
                             : 'bg-stone-100 hover:bg-amber-50 text-stone-700 border border-stone-200/70'
@@ -1677,20 +1959,20 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                       ? 'जैसे: कम तीखा, बिना प्याज...'
                       : 'e.g. Less spicy, extra hot, no onions...'
                   }
-                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
+                  className="w-full text-base sm:text-xs px-3.5 py-2.5 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
                 />
               </div>
             </div>
 
             {/* Footer Action */}
-            <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center gap-3">
+            <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-stone-50 border-t border-stone-200 flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => {
                   addToCart(selectedDish, dishModalNote);
                   setSelectedDish(null);
                 }}
-                className="w-full py-3.5 px-5 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-98 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer flex items-center justify-center gap-2"
+                className="w-full min-h-[48px] py-3.5 px-5 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-[0.98] text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer flex items-center justify-center gap-2 touch-manipulation"
               >
                 <Plus className="w-4 h-4" />
                 <span>
@@ -1704,9 +1986,9 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         </div>
       )}
 
-      {/* Floating Sticky Cart Bar */}
+      {/* Floating Sticky Cart Bar (Phone & Tablet — Desktop uses sticky right sidebar) */}
       {cart.length > 0 && (
-        <div className="fixed bottom-3 left-3.5 right-3.5 z-40 max-w-lg mx-auto animate-slide-up">
+        <div className="lg:hidden fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3.5 right-3.5 z-40 max-w-lg mx-auto animate-slide-up">
           <div className="bg-stone-900 text-white p-3 sm:p-3.5 rounded-2xl shadow-[0_14px_35px_-5px_rgba(28,25,23,0.45)] border border-amber-500/30 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0">
@@ -1742,7 +2024,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 setCartError(null);
                 setIsCartOpen(true);
               }}
-              className="py-2.5 px-4 sm:px-5 bg-linear-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 shrink-0"
+              className="min-h-[42px] py-2.5 px-4 sm:px-5 bg-linear-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 shrink-0 touch-manipulation"
             >
               <span>{language === 'hi' ? 'कार्ट देखें' : 'Review & Order'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -1755,11 +2037,11 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       {isCartOpen && (
         <div
           onClick={() => !orderingInProgress && setIsCartOpen(false)}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-fade-in"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="w-full max-w-lg max-h-[90vh] rounded-t-[28px] sm:rounded-3xl bg-[#faf7f2] shadow-2xl flex flex-col overflow-hidden animate-slide-up border border-amber-200/30"
+            className="w-full max-w-lg max-h-[92dvh] rounded-t-[28px] sm:rounded-3xl bg-[#faf7f2] shadow-2xl flex flex-col overflow-hidden animate-slide-up sm:animate-scale-up border border-amber-200/30"
           >
             {/* Mobile Drag Handle */}
             <div className="sm:hidden bg-stone-900 pt-2.5 pb-1 flex justify-center">
@@ -1792,7 +2074,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                       setCart([]);
                       setIsCartOpen(false);
                     }}
-                    className="text-[11px] font-bold text-rose-300 hover:text-rose-200 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 transition cursor-pointer"
+                    className="min-h-[34px] text-[11px] font-bold text-rose-300 hover:text-rose-200 px-3 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 transition cursor-pointer touch-manipulation"
                   >
                     {language === 'hi' ? 'साफ करें' : 'Clear'}
                   </button>
@@ -1801,7 +2083,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                   type="button"
                   disabled={orderingInProgress}
                   onClick={() => setIsCartOpen(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-90 text-white transition cursor-pointer"
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-90 text-white transition cursor-pointer touch-manipulation"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4" />
@@ -1868,7 +2150,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                             key={preset.id}
                             type="button"
                             onClick={() => appendNotePreset(c.item.id, c.notes, text)}
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap transition cursor-pointer ${
+                            className={`text-[11px] px-2.5 py-1 rounded-full font-bold whitespace-nowrap transition cursor-pointer touch-manipulation ${
                               active
                                 ? 'bg-amber-100 text-amber-900 border border-amber-300'
                                 : 'bg-stone-100 text-stone-600 hover:bg-amber-50 border border-stone-200/70'
@@ -1880,11 +2162,11 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                       })}
                     </div>
 
-                    <div className="flex items-center gap-1.5 bg-stone-900 text-white rounded-xl px-1.5 py-1 shadow-xs shrink-0">
+                    <div className="flex items-center gap-1 bg-stone-900 text-white rounded-xl p-1 shadow-xs shrink-0">
                       <button
                         type="button"
                         onClick={() => updateQuantity(c.item.id, -1)}
-                        className="w-6 h-6 flex items-center justify-center font-bold hover:bg-stone-800 active:scale-90 rounded-lg text-amber-400 transition cursor-pointer"
+                        className="w-8 h-8 flex items-center justify-center font-bold hover:bg-stone-800 active:scale-90 rounded-lg text-amber-400 transition cursor-pointer touch-manipulation"
                         aria-label="Remove or decrease"
                       >
                         {c.quantity === 1 ? <Trash2 className="w-3.5 h-3.5 text-rose-400" /> : <Minus className="w-3.5 h-3.5" />}
@@ -1895,7 +2177,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                       <button
                         type="button"
                         onClick={() => updateQuantity(c.item.id, 1)}
-                        className="w-6 h-6 flex items-center justify-center font-bold bg-amber-500 hover:bg-amber-400 active:scale-90 text-stone-950 rounded-lg transition cursor-pointer"
+                        className="w-8 h-8 flex items-center justify-center font-bold bg-amber-500 hover:bg-amber-400 active:scale-90 text-stone-950 rounded-lg transition cursor-pointer touch-manipulation"
                         aria-label="Increase"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -1903,7 +2185,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                     </div>
                   </div>
 
-                  {/* Custom Note Field */}
+                  {/* Custom Note Field (iOS text-base to prevent auto-zoom) */}
                   <div className="relative">
                     <input
                       type="text"
@@ -1915,7 +2197,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                       }
                       value={c.notes}
                       onChange={e => updateItemNotes(c.item.id, e.target.value)}
-                      className="w-full text-xs px-3 py-2 pr-14 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
+                      className="w-full text-base sm:text-xs px-3 py-2.5 pr-14 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
                     />
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-stone-400 font-mono select-none">
                       {(c.notes || '').length}/150
@@ -1975,12 +2257,12 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
             </div>
 
             {/* Checkout CTA Footer */}
-            <div className="p-4 bg-white border-t border-stone-200 flex gap-2.5">
+            <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2.5">
               <button
                 type="button"
                 disabled={orderingInProgress}
                 onClick={() => setIsCartOpen(false)}
-                className="py-3 px-4 rounded-2xl border border-stone-300 font-bold text-xs text-stone-700 hover:bg-stone-100 active:scale-95 transition cursor-pointer"
+                className="min-h-[48px] py-3 px-4 rounded-2xl border border-stone-300 font-bold text-xs text-stone-700 hover:bg-stone-100 active:scale-95 transition cursor-pointer touch-manipulation"
               >
                 {language === 'hi' ? 'और जोड़ें' : 'Add More'}
               </button>
@@ -1988,7 +2270,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 type="button"
                 disabled={orderingInProgress || cart.length === 0}
                 onClick={handlePlaceOrder}
-                className="flex-1 py-3.5 px-4 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-98 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                className="flex-1 min-h-[48px] py-3.5 px-4 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-[0.98] text-white font-black text-sm shadow-lg shadow-amber-500/25 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 touch-manipulation"
               >
                 {orderingInProgress ? (
                   <>
@@ -2025,8 +2307,10 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       {/* Floating Quick-Dock (Live Orders Pill + Call Waiter) */}
       {isPinVerified && !isSessionEnded && (
         <div
-          className={`fixed z-30 right-3.5 flex items-center gap-2 transition-all duration-300 ${
-            cart.length > 0 ? 'bottom-22' : 'bottom-5'
+          className={`fixed z-30 right-3.5 sm:right-6 flex items-center gap-2 transition-all duration-300 ${
+            cart.length > 0
+              ? 'bottom-[calc(5.75rem+env(safe-area-inset-bottom))] lg:bottom-6'
+              : 'bottom-[max(1.25rem,env(safe-area-inset-bottom))] lg:bottom-6'
           }`}
         >
           {tableOrders.length > 0 && activeTab !== 'orders' && (
@@ -2036,7 +2320,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 triggerHaptic(30);
                 setIsLiveOrdersOpen(true);
               }}
-              className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-stone-900/95 hover:bg-stone-900 text-amber-400 font-extrabold text-xs shadow-xl shadow-stone-950/25 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
+              className="min-h-[44px] flex items-center gap-2 py-2.5 px-4 rounded-full bg-stone-900/95 hover:bg-stone-900 text-amber-400 font-extrabold text-xs shadow-xl shadow-stone-950/25 border border-amber-500/30 active:scale-95 transition-all cursor-pointer touch-manipulation"
               title="View Table Live Orders"
             >
               <span className="relative flex h-2 w-2">
@@ -2058,7 +2342,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               triggerHaptic(30);
               setIsCallWaiterOpen(true);
             }}
-            className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs shadow-xl shadow-amber-500/30 border border-white/25 active:scale-95 transition-all cursor-pointer"
+            className="min-h-[44px] flex items-center gap-2 py-2.5 px-4 rounded-full bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs shadow-xl shadow-amber-500/30 border border-white/25 active:scale-95 transition-all cursor-pointer touch-manipulation"
             title="Call Waiter"
           >
             <Bell className="w-3.5 h-3.5 animate-bounce" />
