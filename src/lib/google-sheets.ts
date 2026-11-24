@@ -332,7 +332,7 @@ export async function syncBillToGoogleSheets(
     const timeFormatted = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
     const nowFormatted = `${dateFormatted} ${timeFormatted}`;
 
-    // 2. Append to Orders tab
+    // 2. Update or Append Orders tab (update customer row if customer already exists)
     // Headers: order_id, date, time, table, customer_name, phone, subtotal, tax, total, payment_mode, visit_no, free_visit, created_by
     const orderRow = [
       bill.invoice_number,
@@ -350,42 +350,136 @@ export async function syncBillToGoogleSheets(
       'Manager',
     ];
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'Orders!A:M',
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: {
-        values: [orderRow],
-      },
-    });
+    let matchedOrderRowIndex = -1;
+    const cleanBillPhone = (bill.customer_phone || '').replace(/\D/g, '');
+    const billName = (bill.customer_name || '').trim().toLowerCase();
 
-    // 3. Append to OrderItems tab
-    // Headers: order_id, item_name, qty, rate, amount, is_free
-    if (items && items.length > 0) {
-      const itemRows = items.map(item => {
-        const isFree = freeCoffeeItemId === item.id;
-        const rate = isFree ? 0 : item.price_per_unit;
-        const amount = isFree ? 0 : item.price_per_unit * item.quantity;
-        return [
-          bill.invoice_number,
-          item.item_name_en,
-          item.quantity,
-          rate,
-          amount,
-          isFree ? 'YES' : 'NO',
-        ];
+    try {
+      const ordersRes = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Orders!A:M',
       });
+      const orderRows = ordersRes.data.values || [];
 
+      for (let i = 1; i < orderRows.length; i++) {
+        const row = orderRows[i];
+        if (!row || row.length === 0) continue;
+        const rowName = (row[4] || '').trim().toLowerCase();
+        const rowPhone = (row[5] || '').toString().replace(/\D/g, '');
+
+        const isPhoneMatch =
+          cleanBillPhone && cleanBillPhone.length >= 10 && rowPhone.includes(cleanBillPhone);
+        const isNameMatch = billName && billName !== 'guest' && billName === rowName;
+
+        if (isPhoneMatch || isNameMatch) {
+          matchedOrderRowIndex = i + 1; // 1-based index
+          break;
+        }
+      }
+    } catch (orderReadErr) {
+      console.warn('Error reading Orders tab for existing customer row:', orderReadErr);
+    }
+
+    if (matchedOrderRowIndex !== -1) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Orders!A${matchedOrderRowIndex}:M${matchedOrderRowIndex}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [orderRow],
+        },
+      });
+    } else {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'OrderItems!A:F',
+        range: 'Orders!A:M',
         valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         requestBody: {
-          values: itemRows,
+          values: [orderRow],
         },
       });
+    }
+
+    // 3. Update or Append OrderItems tab (aggregates total quantity & amount per item)
+    // Headers: order_id, item_name, qty, rate, amount, is_free
+    if (items && items.length > 0) {
+      let existingItemRows: string[][] = [];
+      try {
+        const itemsRes = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: 'OrderItems!A:F',
+        });
+        existingItemRows = (itemsRes.data.values as string[][]) || [];
+      } catch (itemsReadErr) {
+        console.warn('Error reading OrderItems tab:', itemsReadErr);
+      }
+
+      for (const item of items) {
+        const isFree = freeCoffeeItemId === item.id;
+        const rate = isFree ? 0 : item.price_per_unit;
+        const addedAmount = isFree ? 0 : item.price_per_unit * item.quantity;
+        const targetName = item.item_name_en.trim().toLowerCase();
+
+        let matchedItemRowIndex = -1;
+        for (let r = 1; r < existingItemRows.length; r++) {
+          const row = existingItemRows[r];
+          if (row && row[1] && row[1].trim().toLowerCase() === targetName) {
+            matchedItemRowIndex = r + 1; // 1-based index
+            break;
+          }
+        }
+
+        if (matchedItemRowIndex !== -1) {
+          const existingRow = existingItemRows[matchedItemRowIndex - 1];
+          const prevQty = Number(existingRow[2]) || 0;
+          const prevAmount = Number(existingRow[4]) || 0;
+          const updatedQty = prevQty + item.quantity;
+          const updatedAmount = prevAmount + addedAmount;
+          const updatedRow = [
+            bill.invoice_number,
+            item.item_name_en,
+            updatedQty,
+            rate > 0 ? rate : existingRow[3] || 0,
+            updatedAmount,
+            isFree ? 'YES' : existingRow[5] || 'NO',
+          ];
+
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `OrderItems!A${matchedItemRowIndex}:F${matchedItemRowIndex}`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+              values: [updatedRow],
+            },
+          });
+
+          // Update local cache for subsequent items in the same bill
+          existingItemRows[matchedItemRowIndex - 1] = updatedRow.map(String);
+        } else {
+          const newRow = [
+            bill.invoice_number,
+            item.item_name_en,
+            item.quantity,
+            rate,
+            addedAmount,
+            isFree ? 'YES' : 'NO',
+          ];
+
+          await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: 'OrderItems!A:F',
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody: {
+              values: [newRow],
+            },
+          });
+
+          // Add to local cache
+          existingItemRows.push(newRow.map(String));
+        }
+      }
     }
 
     // 4. Update or Append Customers tab (using phone column lookup to prevent double counting on retries)
