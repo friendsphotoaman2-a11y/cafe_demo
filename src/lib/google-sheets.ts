@@ -76,20 +76,75 @@ function resolveSpreadsheetId(customSheetId?: string | null): string | null {
 }
 
 /**
+ * Normalizes Google Service Account private key supporting all env serialization styles:
+ * raw PEM, quoted PEM, escaped newlines (\n or \\n), single-line, and standard PKCS8.
+ */
+export function normalizePrivateKey(rawKey: string): string {
+  if (!rawKey) return '';
+
+  let key = rawKey.trim();
+
+  // Strip all leading and trailing quotes (single, double, backtick, escaped quotes)
+  while (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'")) ||
+    (key.startsWith('`') && key.endsWith('`')) ||
+    (key.startsWith('\\"') && key.endsWith('\\"'))
+  ) {
+    if (key.startsWith('\\"') && key.endsWith('\\"')) {
+      key = key.slice(2, -2).trim();
+    } else {
+      key = key.slice(1, -1).trim();
+    }
+  }
+
+  // Normalize all newline variants
+  key = key.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  key = key.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n');
+
+  // If PEM headers are present, reliably reconstruct standard 64-char-line PEM format
+  const headerMatch = key.match(/-----BEGIN [A-Z\s]+PRIVATE KEY-----/);
+  const footerMatch = key.match(/-----END [A-Z\s]+PRIVATE KEY-----/);
+
+  if (headerMatch && footerMatch) {
+    const header = headerMatch[0];
+    const footer = footerMatch[0];
+
+    const startIndex = key.indexOf(header) + header.length;
+    const endIndex = key.indexOf(footer);
+    const body = key.substring(startIndex, endIndex);
+
+    // Strip whitespace, newlines, and escaping backslashes from the base64 body
+    const cleanBase64 = body.replace(/[\s\r\n\\]/g, '');
+
+    // Split base64 into standard 64-character lines
+    const chunks = cleanBase64.match(/.{1,64}/g) || [];
+
+    return `${header}\n${chunks.join('\n')}\n${footer}\n`;
+  }
+
+  return key;
+}
+
+/**
  * Initializes and returns the authenticated Google Sheets API client
  * using the Service Account credentials from environment variables.
  */
 export function getSheetsClient() {
-  const rawEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
-  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '';
+  const rawEmail =
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+    process.env.GOOGLE_CLIENT_EMAIL ||
+    process.env.GOOGLE_EMAIL ||
+    '';
+
+  const rawKey =
+    process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ||
+    process.env.GOOGLE_PRIVATE_KEY ||
+    process.env.GOOGLE_SHEETS_PRIVATE_KEY ||
+    '';
 
   const clientEmail = rawEmail.trim().replace(/^["']|["']$/g, '');
-  const privateKey = rawKey
-    .trim()
-    .replace(/^["']|["']$/g, '')
-    .replace(/\\\\n/g, '\n')
-    .replace(/\\n/g, '\n')
-    .replace(/\r\n/g, '\n');
+  const privateKey = normalizePrivateKey(rawKey);
 
   if (!clientEmail || !privateKey) {
     throw new Error('Google Service Account credentials missing in environment.');
