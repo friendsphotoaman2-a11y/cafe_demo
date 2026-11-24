@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, use } from 'react';
+import confetti from 'canvas-confetti';
 import { createClient } from '@/lib/supabase/client';
 import { MenuItem, Category, Order } from '@/types/database';
 import { VegNonVegBadge } from '@/components/VegNonVegBadge';
 import { CallWaiterModal } from '@/components/CallWaiterModal';
 import { LiveOrderList } from '@/components/LiveOrderList';
+import { TableOrdersFeed } from '@/components/TableOrdersFeed';
 import { isItemInMealWindow, isItemAvailableToday } from '@/lib/meal-timing';
 import { apiUrl } from '@/lib/base-path';
 import {
   Lock,
+  Unlock,
   Search,
   Plus,
   Minus,
+  Trash2,
   ShoppingBag,
   Bell,
   AlertTriangle,
@@ -21,12 +25,16 @@ import {
   UtensilsCrossed,
   Ban,
   ClipboardList,
-  Clock,
-  Flame,
   CheckCircle2,
   Sparkles,
   Delete,
   Receipt,
+  X,
+  ArrowRight,
+  ArrowUpDown,
+  Clock,
+  Coffee,
+  Loader2,
 } from 'lucide-react';
 
 import { useTranslation } from '@/lib/i18n';
@@ -37,6 +45,13 @@ interface CartItem {
   notes: string;
 }
 
+const NOTE_PRESETS = [
+  { id: 'less_spicy', en: 'Less spicy', hi: 'कम तीखा' },
+  { id: 'less_sugar', en: 'Less sugar', hi: 'कम चीनी' },
+  { id: 'no_ice', en: 'No ice', hi: 'बिना बर्फ' },
+  { id: 'extra_hot', en: 'Extra hot', hi: 'ज्यादा गर्म' },
+] as const;
+
 export default function TablePage({ params }: { params: Promise<{ tableCode?: string; table_code?: string }> }) {
   const resolvedParams = use(params);
   const rawCode = resolvedParams.tableCode || resolvedParams.table_code || '';
@@ -45,6 +60,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // Authentication & Session State
   const [pin, setPin] = useState('');
   const [isPinVerified, setIsPinVerified] = useState(false);
+  const [pinUnlockSuccess, setPinUnlockSuccess] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isSessionEnded, setIsSessionEnded] = useState(false);
   const [activeTab, setActiveTab] = useState<'menu' | 'orders'>('menu');
@@ -58,6 +74,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   const [deviceId, setDeviceId] = useState<string>('');
 
   // Menu & Data state
+  const [cafeName, setCafeName] = useState('Brew & Bites Cafe');
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -66,6 +83,10 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   const [sortBy, setSortBy] = useState<'recommended' | 'price_asc' | 'price_desc'>('recommended');
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const { language, setLanguage, t } = useTranslation();
+
+  // Dish Quick-View Modal state
+  const [selectedDish, setSelectedDish] = useState<MenuItem | null>(null);
+  const [dishModalNote, setDishModalNote] = useState('');
 
   // Cart & Ordering
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -80,9 +101,19 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   const [gstRatePercent, setGstRatePercent] = useState(5.0);
   const [realtimeConnected, setRealtimeConnected] = useState(true);
 
-  // Initialize Anonymous Auth, device_id, and check for existing open table session
+  // Haptic feedback helper
+  const triggerHaptic = (ms: number | number[] = 35) => {
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(ms);
+      } catch {
+        // Ignore on unsupported browsers
+      }
+    }
+  };
+
+  // Initialize Anonymous Auth, device_id, saved cart, and open table session
   useEffect(() => {
-    // 1. Sign in anonymously with Supabase Auth if there is no session
     async function initAnonymousAuth() {
       try {
         const supabase = createClient();
@@ -98,7 +129,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
     initAnonymousAuth();
 
-    // 2. Persistent device ID for table ordering
     let id = localStorage.getItem('cafe_device_id');
     if (!id) {
       id = 'dev_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
@@ -106,7 +136,15 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
     setDeviceId(id);
 
-    // 3. Check for existing open table session or server-enforced PIN-OFF direct access
+    // Restore unsent cart items for this table on refresh
+    try {
+      const savedCart = sessionStorage.getItem(`cafe_cart_${tableCode}`);
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart);
+        if (Array.isArray(parsed)) setCart(parsed);
+      }
+    } catch {}
+
     async function checkExistingSession() {
       const savedToken =
         localStorage.getItem(`cafe_session_${tableCode}`) ||
@@ -130,7 +168,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
         if (data && data.success) {
           if (data.active) {
-            // Either existing session is active OR server auto-joined because PIN is OFF!
             const token = data.session_token || savedToken;
             const sessId = data.session_id || savedSessionId;
             const tblNum = data.table_number || savedTableNum || `Table ${tableCode}`;
@@ -151,7 +188,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
             localStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
             sessionStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
           } else {
-            // Session closed and PIN is required -> prompt for fresh PIN
             localStorage.removeItem(`cafe_session_${tableCode}`);
             localStorage.removeItem(`cafe_session_id_${tableCode}`);
             sessionStorage.removeItem(`cafe_session_${tableCode}`);
@@ -159,7 +195,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           }
         }
       } catch {
-        // If offline/check fails, fallback to saved session if present
         if (savedToken && savedSessionId) {
           setSessionToken(savedToken);
           setSessionId(savedSessionId);
@@ -173,6 +208,17 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     checkExistingSession();
   }, [tableCode]);
 
+  // Persist cart cleanly across accidental refreshes
+  useEffect(() => {
+    try {
+      if (cart.length > 0) {
+        sessionStorage.setItem(`cafe_cart_${tableCode}`, JSON.stringify(cart));
+      } else {
+        sessionStorage.removeItem(`cafe_cart_${tableCode}`);
+      }
+    } catch {}
+  }, [cart, tableCode]);
+
   // Lockout countdown timer
   useEffect(() => {
     if (lockCountdown <= 0) {
@@ -185,18 +231,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     return () => clearInterval(timer);
   }, [lockCountdown, isLocked]);
 
-  // Haptic feedback helper
-  const triggerHaptic = (ms: number | number[] = 35) => {
-    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-      try {
-        navigator.vibrate(ms);
-      } catch {
-        // Ignore on unsupported browsers
-      }
-    }
-  };
-
-  // Handle PIN verification
+  // Handle PIN verification with unlock animation
   async function handleVerifyPin(e?: React.FormEvent, pinToVerify?: string) {
     if (e) e.preventDefault();
     const targetPin = pinToVerify !== undefined ? pinToVerify : pin;
@@ -227,6 +262,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       const data = await res.json();
 
       if (data.locked) {
+        triggerHaptic([70, 40, 70]);
         setIsLocked(true);
         const remSec = data.lock_remaining_seconds || 300;
         setLockCountdown(remSec);
@@ -240,16 +276,20 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       }
 
       if (!data.success) {
+        triggerHaptic([60, 40, 60]);
         setPinError(defaultInvalidMsg);
+        setPin('');
         return;
       }
 
-      // Success: store session info in both localStorage and sessionStorage
+      // Brief emerald unlock celebration before opening menu
+      triggerHaptic([35, 35, 65]);
+      setPinUnlockSuccess(true);
+
       setSessionToken(data.session_token);
       setSessionId(data.session_id);
       const tableNum = data.table_number || `Table ${tableCode}`;
       setTableNumber(tableNum);
-      setIsPinVerified(true);
 
       localStorage.setItem(`cafe_session_${tableCode}`, data.session_token);
       localStorage.setItem(`cafe_session_id_${tableCode}`, data.session_id);
@@ -258,7 +298,13 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       sessionStorage.setItem(`cafe_session_${tableCode}`, data.session_token);
       sessionStorage.setItem(`cafe_session_id_${tableCode}`, data.session_id);
       sessionStorage.setItem(`cafe_table_num_${tableCode}`, tableNum);
+
+      setTimeout(() => {
+        setPinUnlockSuccess(false);
+        setIsPinVerified(true);
+      }, 420);
     } catch {
+      triggerHaptic([60, 40, 60]);
       setPinError(defaultInvalidMsg);
     } finally {
       setVerifyingPin(false);
@@ -267,6 +313,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
   // Keypad button press handler with haptic feedback & auto-submit on 4th digit
   function handleKeypadPress(btn: string) {
+    if (verifyingPin || pinUnlockSuccess) return;
     triggerHaptic(35);
     if (btn === 'C') {
       setPin('');
@@ -288,7 +335,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
   // Fetch Menu, Categories, and Settings (Stale-While-Revalidate with sessionStorage)
   const refreshMenu = React.useCallback(async () => {
-    // 1. Instant cache load
     if (typeof window !== 'undefined') {
       try {
         const cachedCats = sessionStorage.getItem('cafe_cached_categories');
@@ -323,11 +369,12 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
     const { data: settingsData } = await supabase
       .from('manager_settings')
-      .select('gst_rate_percent, cafe_tagline')
+      .select('cafe_name, gst_rate_percent, cafe_tagline')
       .eq('id', 1)
       .maybeSingle();
 
     if (settingsData) {
+      if (settingsData.cafe_name) setCafeName(settingsData.cafe_name);
       setGstRatePercent(Number(settingsData.gst_rate_percent) || 5.0);
       try {
         if (settingsData.cafe_tagline?.trim().startsWith('{')) {
@@ -340,18 +387,15 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
   }, []);
 
-  // Prefetch menu items and categories immediately on page load in background
-  // so the menu renders with 0ms delay the moment PIN is verified
   useEffect(() => {
     refreshMenu();
   }, [refreshMenu]);
 
+  // Realtime Menu Item Updates
   useEffect(() => {
     if (!isPinVerified) return;
 
     const supabase = createClient();
-
-    // Realtime subscription on menu items (e.g. availability toggle syncs live to all menus)
     const channel = supabase
       .channel('public:menu_items')
       .on(
@@ -377,7 +421,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     };
   }, [isPinVerified]);
 
-  // Fetch and Subscribe to Table Shared Orders
+  // Fetch and Subscribe to Table Shared Orders & Session Status
   useEffect(() => {
     if (!isPinVerified || !sessionId) return;
 
@@ -391,9 +435,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           setTableOrders(result.orders as Order[]);
           return;
         }
-      } catch {
-        // Fallback to direct query if available
-      }
+      } catch {}
       const { data } = await supabase
         .from('orders')
         .select('*, order_items(*)')
@@ -404,10 +446,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
 
     fetchOrders();
-    // Safety net: 5-second polling fallback if realtime drops
     const pollInterval = setInterval(fetchOrders, 5000);
 
-    // Online & visibility event listeners
     const handleOnline = () => {
       setRealtimeConnected(true);
       fetchOrders();
@@ -421,7 +461,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     window.addEventListener('offline', handleOffline);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    // Subscribe to order updates for this table session
     const orderChannel = supabase
       .channel(`table_orders_${sessionId}`)
       .on(
@@ -432,9 +471,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           table: 'orders',
           filter: `session_id=eq.${sessionId}`,
         },
-        () => {
-          fetchOrders();
-        }
+        () => fetchOrders()
       )
       .on(
         'postgres_changes',
@@ -443,15 +480,12 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           schema: 'public',
           table: 'order_items',
         },
-        () => {
-          fetchOrders();
-        }
+        () => fetchOrders()
       )
       .subscribe(status => {
         setRealtimeConnected(status === 'SUBSCRIBED');
       });
 
-    // Subscribe to session status changes (e.g. manager closes session at billing counter)
     const sessionChannel = supabase
       .channel(`table_session_status_${sessionId}`)
       .on(
@@ -468,6 +502,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
             setIsSessionEnded(true);
             setIsPinVerified(false);
             setCart([]);
+            sessionStorage.removeItem(`cafe_cart_${tableCode}`);
             localStorage.removeItem(`cafe_session_${tableCode}`);
             localStorage.removeItem(`cafe_session_id_${tableCode}`);
             sessionStorage.removeItem(`cafe_session_${tableCode}`);
@@ -487,22 +522,27 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     };
   }, [isPinVerified, sessionId, tableCode]);
 
-  // Cart Management
-  function addToCart(item: MenuItem) {
+  // Cart Helpers
+  function addToCart(item: MenuItem, customNote?: string) {
     triggerHaptic(40);
     setCart(prev => {
       const existing = prev.find(i => i.item.id === item.id);
       if (existing) {
         return prev.map(i =>
-          i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.item.id === item.id
+            ? {
+                ...i,
+                quantity: i.quantity + 1,
+                notes: customNote !== undefined && customNote.trim() ? customNote.trim().slice(0, 150) : i.notes,
+              }
+            : i
         );
       }
-      return [...prev, { item, quantity: 1, notes: '' }];
+      return [...prev, { item, quantity: 1, notes: (customNote || '').trim().slice(0, 150) }];
     });
   }
 
   function updateQuantity(itemId: string, delta: number) {
-    // Distinct haptic pulse: short crisp on increase (35ms), firmer feedback on delete/reduce (55ms)
     triggerHaptic(delta > 0 ? 35 : 55);
     setCart(prev =>
       prev
@@ -518,9 +558,15 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   }
 
   function updateItemNotes(itemId: string, notes: string) {
-    setCart(prev =>
-      prev.map(i => (i.item.id === itemId ? { ...i, notes } : i))
-    );
+    setCart(prev => prev.map(i => (i.item.id === itemId ? { ...i, notes } : i)));
+  }
+
+  function appendNotePreset(itemId: string, currentNote: string, presetText: string) {
+    triggerHaptic(20);
+    const trimmed = currentNote.trim();
+    if (trimmed.toLowerCase().includes(presetText.toLowerCase())) return;
+    const next = trimmed ? `${trimmed}, ${presetText}` : presetText;
+    updateItemNotes(itemId, next.slice(0, 150));
   }
 
   const cartTotal = useMemo(() => {
@@ -531,17 +577,21 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     return cart.reduce((sum, item) => sum + item.quantity, 0);
   }, [cart]);
 
-  // Submit Order: calls place_order(session_id, items) / place_table_order
+  const gstAmount = useMemo(() => {
+    return taxEnabled ? Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100 : 0;
+  }, [cartTotal, taxEnabled, gstRatePercent]);
+
+  const grandTotal = cartTotal + gstAmount;
+
+  // Submit Order
   async function handlePlaceOrder() {
     if ((!sessionToken && !sessionId) || cart.length === 0) return;
 
-    // Haptic pulse on tapping Place Order
     triggerHaptic([40, 60, 40]);
     setOrderingInProgress(true);
     setCartError(null);
 
     try {
-      // NEVER send prices from the client! Only item_id, quantity, and notes (max 150 chars)
       const itemsPayload = cart.map(c => ({
         item_id: c.item.id,
         quantity: c.quantity,
@@ -577,7 +627,6 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               ? 'टेबल सत्र समाप्त हो चुका है। कृपया नया पिन पाने के लिए मैनेजर से संपर्क करें।'
               : 'Session is closed or invalid. Please ask manager for a new PIN.'
           );
-          // Expire session and show PIN screen
           setIsPinVerified(false);
           localStorage.removeItem(`cafe_session_${tableCode}`);
           localStorage.removeItem(`cafe_session_id_${tableCode}`);
@@ -591,22 +640,30 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           );
           await refreshMenu();
         } else {
-          setCartError(
-            msg || (language === 'hi' ? 'ऑर्डर भेजने में त्रुटि।' : 'Failed to place order.')
-          );
+          setCartError(msg || (language === 'hi' ? 'ऑर्डर भेजने में त्रुटि।' : 'Failed to place order.'));
           await refreshMenu();
         }
       } else {
-        // Order success: trigger distinct success vibration, show confirmation and clear cart
         triggerHaptic([60, 50, 100]);
         setCart([]);
+        sessionStorage.removeItem(`cafe_cart_${tableCode}`);
         setIsCartOpen(false);
         setCartError(null);
         setActiveTab('orders');
+
+        try {
+          confetti({
+            particleCount: 65,
+            spread: 70,
+            origin: { y: 0.72 },
+            colors: ['#f59e0b', '#10b981', '#fbbf24', '#ffffff'],
+          });
+        } catch {}
+
         setOrderSuccessMessage(
           language === 'hi'
-            ? 'ऑर्डर सफलतापूर्वक भेजा गया! रसोई में तैयारी शुरू हो गई है।'
-            : 'Order placed successfully! Sent straight to the kitchen.'
+            ? 'ऑर्डर सफलतापूर्वक भेजा गया! किचन में तैयारी शुरू हो गई है।'
+            : 'Order placed! Sent straight to the kitchen.'
         );
         setTimeout(() => setOrderSuccessMessage(null), 4500);
       }
@@ -625,147 +682,76 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // Filtered & Sorted Menu Items
   const filteredItems = useMemo(() => {
     const list = menuItems.filter(item => {
-      // 1. Hide items outside their breakfast/lunch time window (Asia/Kolkata)
-      if (!isItemInMealWindow(item)) {
-        return false;
-      }
+      if (!isItemInMealWindow(item)) return false;
+      if (selectedCategory !== 'all' && item.category_id !== selectedCategory) return false;
+      if (dietFilter === 'veg' && !item.is_veg) return false;
+      if (dietFilter === 'nonveg' && item.is_veg) return false;
 
-      // 2. Category filter
-      if (selectedCategory !== 'all' && item.category_id !== selectedCategory) {
-        return false;
-      }
-
-      // 3. Veg / Non-Veg filter
-      if (dietFilter === 'veg' && !item.is_veg) {
-        return false;
-      }
-      if (dietFilter === 'nonveg' && item.is_veg) {
-        return false;
-      }
-
-      // 4. Search query filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesEn = item.name_en.toLowerCase().includes(query);
-        const matchesHi = item.name_hi.toLowerCase().includes(query);
-        return matchesEn || matchesHi;
+        return (
+          item.name_en.toLowerCase().includes(query) ||
+          item.name_hi.toLowerCase().includes(query)
+        );
       }
 
       return true;
     });
 
-    if (sortBy === 'price_asc') {
-      return [...list].sort((a, b) => a.price - b.price);
-    }
-    if (sortBy === 'price_desc') {
-      return [...list].sort((a, b) => b.price - a.price);
-    }
-
+    if (sortBy === 'price_asc') return [...list].sort((a, b) => a.price - b.price);
+    if (sortBy === 'price_desc') return [...list].sort((a, b) => b.price - a.price);
     return list;
   }, [menuItems, selectedCategory, dietFilter, searchQuery, sortBy]);
 
-  // Split orders for this session into "Your order" (this phone) and "Others at your table"
-  const myOrders = useMemo(() => {
-    return tableOrders.filter(o => o.device_id === deviceId);
-  }, [tableOrders, deviceId]);
-
-  const otherOrders = useMemo(() => {
-    return tableOrders.filter(o => o.device_id !== deviceId);
-  }, [tableOrders, deviceId]);
-
-  const totalTableAmount = useMemo(() => {
-    return tableOrders.reduce((acc, order) => {
-      const itemsSum =
-        order.order_items?.reduce(
-          (sum, it) => (it.status !== 'CANCELLED' ? sum + it.price_per_unit * it.quantity : sum),
-          0
-        ) || 0;
-      return acc + itemsSum;
-    }, 0);
-  }, [tableOrders]);
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-            <Clock className="w-3 h-3 animate-spin" />
-            <span>{language === 'hi' ? 'प्राप्त हुआ' : 'Received'}</span>
-          </span>
-        );
-      case 'PREPARING':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
-            <Flame className="w-3 h-3 text-orange-600" />
-            <span>{language === 'hi' ? 'तैयार हो रहा है' : 'Preparing'}</span>
-          </span>
-        );
-      case 'READY':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-            <UtensilsCrossed className="w-3 h-3" />
-            <span>{language === 'hi' ? 'तैयार है' : 'Ready'}</span>
-          </span>
-        );
-      case 'SERVED':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3" />
-            <span>{language === 'hi' ? 'परोसा गया' : 'Served'}</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-            {status}
-          </span>
-        );
-    }
-  };
+  const hasReadyOrder = useMemo(
+    () => tableOrders.some(o => o.status === 'READY'),
+    [tableOrders]
+  );
 
   // -------------------------------------------------------------
-  // FULL-SCREEN: SESSION ENDED NOTIFICATION (Manager closed session)
+  // FULL-SCREEN: SESSION ENDED NOTIFICATION
   // -------------------------------------------------------------
   if (isSessionEnded) {
     return (
-      <div className="min-h-screen bg-linear-to-b from-amber-500/15 via-white to-amber-50 flex flex-col justify-center items-center p-6 text-center animate-fade-in">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-amber-100 p-8 flex flex-col items-center">
-          <div className="w-20 h-20 bg-amber-500 text-white rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-amber-500/30">
+      <div className="min-h-screen bg-linear-to-b from-[#fdf8f0] via-white to-amber-50 flex flex-col justify-center items-center p-6 text-center animate-fade-in">
+        <div className="w-full max-w-md bg-white rounded-[32px] shadow-2xl border border-amber-200/70 p-8 flex flex-col items-center animate-scale-up">
+          <div className="w-20 h-20 bg-linear-to-br from-emerald-500 to-emerald-600 text-white rounded-3xl flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/30 animate-float">
             <CheckCircle2 className="w-10 h-10" />
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight mb-2">
-            {language === 'hi' ? 'सत्र समाप्त हो गया है। धन्यवाद!' : 'Session ended. Thank you!'}
+          <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight mb-2">
+            {language === 'hi' ? 'धन्यवाद! फिर पधारें' : 'Session Ended. Thank You!'}
           </h1>
 
-          <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+          <p className="text-sm text-stone-600 mb-6 leading-relaxed">
             {language === 'hi'
-              ? `मैनेजर द्वारा ${tableNumber} का बिल काउंटर पर पूरा हो चुका है और सत्र समाप्त कर दिया गया है। हमारे साथ भोजन करने के लिए धन्यवाद!`
-              : `Your dining session at ${tableNumber} has been closed by the manager at the counter. All ordering is now finished. Thank you for dining with Brew & Bites Cafe!`}
+              ? `${tableNumber} का बिल काउंटर पर पूरा हो चुका है। हमारे साथ भोजन करने के लिए धन्यवाद!`
+              : `Your dining session at ${tableNumber} has been settled at the counter. Thank you for dining with ${cafeName}!`}
           </p>
 
-          <div className="w-full p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 font-medium mb-6 text-left space-y-1.5">
-            <div className="flex items-center gap-2 font-bold text-amber-950">
-              <Sparkles className="w-4 h-4 text-amber-600" />
+          <div className="w-full p-4 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs text-amber-950 font-medium mb-6 text-left space-y-1.5">
+            <div className="flex items-center gap-2 font-black text-amber-950">
+              <Coffee className="w-4 h-4 text-amber-600" />
               <span>{language === 'hi' ? 'लॉयल्टी रिवॉर्ड' : 'Loyalty Rewards'}</span>
             </div>
-            <p>
+            <p className="text-amber-900/80">
               {language === 'hi'
                 ? 'प्रत्येक 5 विज़िट के बाद, आपकी अगली विज़िट (6, 11, 16...) पर 1 मुफ़्त कॉफ़ी मिलती है!'
-                : 'After every 5 visits, your next visit receives 1 Free Coffee!'}
+                : 'After every 5 visits, your next visit earns 1 Free Coffee!'}
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => {
+              triggerHaptic(30);
               setIsSessionEnded(false);
               setPin('');
               setPinError(null);
             }}
-            className="w-full py-3.5 px-6 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-98 text-white font-bold text-sm shadow-lg shadow-amber-600/30 transition cursor-pointer"
+            className="w-full py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer"
           >
-            {language === 'hi' ? 'नया सत्र शुरू करें' : 'Start New Session'}
+            {language === 'hi' ? 'नया सत्र शुरू करें' : 'Start Fresh Session'}
           </button>
         </div>
       </div>
@@ -773,29 +759,46 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   }
 
   // -------------------------------------------------------------
-  // SCREEN 0: SESSION CHECKING SKELETON (Prevents PIN screen flicker on refresh)
+  // SCREEN 0: SESSION CHECKING SHIMMER SKELETON (No PIN Flicker)
   // -------------------------------------------------------------
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen w-full bg-[#f8f5f0] flex flex-col justify-center items-center p-6 text-center select-none">
-        <div className="relative mb-5">
-          <div className="w-16 h-16 rounded-3xl bg-linear-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center text-3xl shadow-xl shadow-amber-500/25 animate-pulse">
-            ☕
+      <div className="min-h-screen w-full bg-[#faf7f2] flex flex-col items-center justify-center p-5 select-none">
+        <div className="w-full max-w-md flex flex-col items-center">
+          {/* Animated Coffee Emblem with subtle steam */}
+          <div className="relative mb-5">
+            <div className="flex justify-center gap-1.5 mb-1">
+              <span className="w-1 h-3 rounded-full bg-amber-400/70 animate-steam-1" />
+              <span className="w-1 h-4 rounded-full bg-amber-500/70 animate-steam-2" />
+            </div>
+            <div className="w-16 h-16 rounded-3xl bg-linear-to-br from-amber-400 via-orange-500 to-amber-600 text-white flex items-center justify-center text-3xl shadow-xl shadow-amber-500/25 animate-float">
+              ☕
+            </div>
           </div>
-          <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500"></span>
-          </span>
-        </div>
-        <h2 className="text-xl font-black text-amber-950 tracking-tight">
-          {language === 'hi' ? 'ब्रू एंड बाइट्स कैफे' : 'Brew & Bites Cafe'}
-        </h2>
-        <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-amber-100/80 border border-amber-200/60 text-xs font-bold text-amber-900">
-          <span>{tableNumber}</span>
-          <span>•</span>
-          <span className="text-amber-700">
-            {language === 'hi' ? 'मेनू लोड हो रहा है...' : 'Opening menu...'}
-          </span>
+
+          <h2 className="text-xl font-black text-stone-900 tracking-tight">{cafeName}</h2>
+          <div className="inline-flex items-center gap-2 mt-2 mb-8 px-3.5 py-1 rounded-full bg-amber-100/90 border border-amber-200 text-xs font-bold text-amber-950">
+            <span>{tableNumber}</span>
+            <span>•</span>
+            <span className="text-amber-700 flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {language === 'hi' ? 'मेनू तैयार हो रहा है...' : 'Preparing your table...'}
+            </span>
+          </div>
+
+          {/* Preview shimmer cards so load feels ultra responsive */}
+          <div className="w-full space-y-3 opacity-75">
+            {[1, 2, 3].map(n => (
+              <div key={n} className="bg-white rounded-2xl p-3 border border-stone-200/70 flex gap-3 shadow-2xs">
+                <div className="w-20 h-20 rounded-xl animate-shimmer shrink-0" />
+                <div className="flex-1 space-y-2 py-1">
+                  <div className="h-4 w-3/4 rounded-md animate-shimmer" />
+                  <div className="h-3 w-full rounded-md animate-shimmer" />
+                  <div className="h-4 w-16 rounded-md animate-shimmer mt-2" />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -808,31 +811,30 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     const lockMinutes = Math.max(1, Math.ceil(lockCountdown / 60));
 
     return (
-      <div className="min-h-screen w-full bg-[#f8f5f0] flex flex-col justify-center items-center p-4 sm:p-6 select-none">
-        {/* Top Header with Cafe Branding & Language Switch */}
-        <div className="w-full max-w-sm flex items-center justify-between mb-3 px-2">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-base shadow-md shadow-amber-500/20">
+      <div className="min-h-screen w-full bg-linear-to-b from-[#fdf8f0] via-[#faf4ea] to-[#f3e8d7] flex flex-col justify-center items-center p-4 sm:p-6 select-none">
+        {/* Top Brand Row */}
+        <div className="w-full max-w-sm flex items-center justify-between mb-3.5 px-1 animate-fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-amber-500/25 shrink-0">
               ☕
             </div>
-            <div>
-              <span className="font-extrabold text-sm text-gray-900 block leading-tight">
-                {language === 'hi' ? 'ब्रू एंड बाइट्स कैफे' : 'Brew & Bites Cafe'}
+            <div className="min-w-0">
+              <span className="font-black text-sm text-stone-900 block leading-tight truncate">
+                {language === 'hi' ? 'ब्रू एंड बाइट्स कैफे' : cafeName}
               </span>
-              <span className="text-[11px] font-semibold text-amber-700 inline-block bg-amber-100/80 px-2 py-0.2 rounded-md">
+              <span className="text-[11px] font-extrabold text-amber-900 inline-block bg-amber-200/70 px-2 py-0.5 rounded-md mt-0.5">
                 {tableNumber}
               </span>
             </div>
           </div>
 
-          {/* Hindi / English Toggle */}
           <button
             type="button"
             onClick={() => {
               triggerHaptic(20);
               setLanguage(language === 'en' ? 'hi' : 'en');
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-200 bg-white shadow-xs text-xs font-bold text-amber-900 hover:bg-amber-50 active:scale-95 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-amber-200 bg-white/90 shadow-xs text-xs font-extrabold text-stone-800 hover:bg-amber-50 active:scale-95 transition cursor-pointer shrink-0"
             title="Toggle Hindi / English"
           >
             <Languages className="w-3.5 h-3.5 text-amber-600" />
@@ -840,177 +842,222 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           </button>
         </div>
 
-        {/* PIN Card */}
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl shadow-amber-950/5 border border-amber-100 p-6 sm:p-7 text-center animate-fade-in flex flex-col">
-          <div className="w-14 h-14 bg-linear-to-br from-amber-400 to-amber-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-amber-500/25">
-            <Lock className="w-6 h-6" />
-          </div>
+        {/* Main PIN Card */}
+        <div className="w-full max-w-sm bg-white/95 backdrop-blur-md rounded-[32px] shadow-[0_20px_50px_-12px_rgba(120,53,15,0.18)] border border-amber-200/60 overflow-hidden animate-scale-up">
+          {/* Top Accent Ribbon */}
+          <div className="h-1.5 w-full bg-linear-to-r from-amber-400 via-orange-500 to-amber-500" />
 
-          <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-            {language === 'hi'
-              ? `${tableNumber} में आपका स्वागत है`
-              : `Welcome to ${tableNumber}`}
-          </h1>
-          <p className="text-xs text-gray-500 mt-1 mb-4 leading-relaxed font-medium">
-            {language === 'hi'
-              ? 'मेनू देखने और ऑर्डर करने के लिए 4-अंकों का पिन दर्ज करें।'
-              : 'Enter the 4-digit PIN to view menu and start ordering.'}
-          </p>
-
-          {isLocked ? (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 sm:p-5 mb-4 text-left">
-              <div className="flex items-center gap-2 text-red-700 font-bold mb-1 text-sm">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                <span>{language === 'hi' ? 'टेबल लॉक है' : 'Table Locked'}</span>
-              </div>
-              <p className="text-xs text-red-600 mb-3 font-medium leading-normal">
-                {language === 'hi'
-                  ? `बहुत सारे गलत प्रयास। टेबल ${lockMinutes} मिनट के लिए लॉक है। कृपया मैनेजर से बात करें।`
-                  : `Too many wrong attempts. Table is locked for ${lockMinutes} minute(s). Please talk to manager.`}
-              </p>
-              <div className="flex items-center justify-between text-xs font-semibold text-red-700 bg-red-100/60 p-2.5 rounded-xl">
-                <span>{language === 'hi' ? 'समय शेष:' : 'Lock countdown:'}</span>
-                <span className="font-mono text-sm font-bold">
-                  {Math.floor(lockCountdown / 60)}:
-                  {(lockCountdown % 60).toString().padStart(2, '0')}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* 4 Large Digit Display Boxes (NO native keyboard pop-up) */}
-              <div className="flex justify-center gap-2.5 sm:gap-3 my-1">
-                {[0, 1, 2, 3].map(index => {
-                  const digit = pin[index];
-                  const isActive = index === pin.length && !verifyingPin;
-                  return (
-                    <div
-                      key={index}
-                      className={`w-13 h-15 sm:w-15 sm:h-17 rounded-2xl border-2 flex items-center justify-center text-3xl font-black select-none transition-all duration-200 ${
-                        digit
-                          ? 'border-amber-500 bg-amber-50/70 text-amber-950 scale-105 shadow-xs ring-4 ring-amber-500/10'
-                          : isActive
-                          ? 'border-amber-400 bg-white ring-4 ring-amber-400/20'
-                          : 'border-gray-200 bg-gray-50/70 text-gray-300'
-                      }`}
-                    >
-                      {digit ? (
-                        <span>{digit}</span>
-                      ) : isActive ? (
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
-                      ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Error Message */}
-              {pinError && (
-                <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-semibold leading-relaxed animate-shake">
-                  {pinError}
-                </div>
+          <div className="p-6 sm:p-7 text-center flex flex-col">
+            {/* Dynamic Lock -> Check Emblem */}
+            <div
+              className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-lg transition-all duration-300 ${
+                pinUnlockSuccess
+                  ? 'bg-linear-to-br from-emerald-500 to-emerald-600 text-white shadow-emerald-500/30 scale-110'
+                  : pinError
+                  ? 'bg-linear-to-br from-rose-500 to-rose-600 text-white shadow-rose-500/30 animate-shake'
+                  : 'bg-linear-to-br from-amber-400 to-orange-500 text-white shadow-amber-500/25'
+              }`}
+            >
+              {pinUnlockSuccess ? (
+                <Unlock className="w-6 h-6 animate-pop" />
+              ) : (
+                <Lock className="w-6 h-6" />
               )}
-
-              {/* Virtual Touch Keypad */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-2.5 max-w-xs mx-auto pt-1">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'DEL'].map(btn => {
-                  const isClear = btn === 'C';
-                  const isDelete = btn === 'DEL';
-
-                  return (
-                    <button
-                      key={btn}
-                      type="button"
-                      disabled={verifyingPin}
-                      onClick={() => handleKeypadPress(btn)}
-                      className={`h-12 sm:h-13 rounded-2xl font-black text-xl active:scale-90 transition-all duration-150 flex items-center justify-center shadow-xs cursor-pointer select-none disabled:opacity-50 ${
-                        isClear
-                          ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/70'
-                          : isDelete
-                          ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/70'
-                          : 'bg-gray-50 hover:bg-amber-50 text-gray-800 border border-gray-200/80 active:bg-amber-100'
-                      }`}
-                    >
-                      {isDelete ? (
-                        <Delete className="w-5 h-5 text-amber-900" />
-                      ) : isClear ? (
-                        <span className="text-base font-black">C</span>
-                      ) : (
-                        btn
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="button"
-                disabled={pin.length !== 4 || verifyingPin}
-                onClick={() => {
-                  triggerHaptic(40);
-                  handleVerifyPin();
-                }}
-                className="w-full py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-98 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition-all disabled:opacity-50 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2"
-              >
-                {verifyingPin ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>
-                      {language === 'hi' ? 'सत्यापित हो रहा है...' : 'Verifying PIN...'}
-                    </span>
-                  </>
-                ) : (
-                  <span>
-                    {language === 'hi' ? 'मेनू खोलें' : 'Open Menu'}
-                  </span>
-                )}
-              </button>
             </div>
-          )}
 
-          <p className="text-[11px] text-gray-400 mt-4 leading-normal">
-            {language === 'hi'
-              ? 'पिन के लिए अपने सर्वर या कैफे मैनेजर से संपर्क करें।'
-              : 'Ask your server or cafe manager for the 4-digit PIN.'}
-          </p>
+            <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+              {pinUnlockSuccess
+                ? language === 'hi'
+                  ? 'स्वागत है! मेनू खुल रहा है'
+                  : 'Unlocked! Opening Menu'
+                : language === 'hi'
+                ? `${tableNumber} में स्वागत है`
+                : `Welcome to ${tableNumber}`}
+            </h1>
+            <p className="text-xs text-stone-500 mt-1 mb-5 leading-relaxed font-medium">
+              {language === 'hi'
+                ? 'मेनू देखने और ऑर्डर शुरू करने के लिए 4-अंकों का पिन डालें'
+                : 'Enter the 4-digit table PIN to browse & order'}
+            </p>
+
+            {isLocked ? (
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 mb-2 text-left animate-fade-in">
+                <div className="flex items-center gap-2 text-rose-700 font-black mb-1 text-sm">
+                  <AlertTriangle className="w-5 h-5 shrink-0" />
+                  <span>{language === 'hi' ? 'टेबल लॉक है' : 'Table Locked'}</span>
+                </div>
+                <p className="text-xs text-rose-700/90 mb-3 font-medium leading-normal">
+                  {language === 'hi'
+                    ? `कई गलत प्रयासों के कारण टेबल ${lockMinutes} मिनट के लिए लॉक है। कृपया स्टाफ से संपर्क करें।`
+                    : `Too many wrong attempts. Table is locked for ${lockMinutes} minute(s). Please ask your server.`}
+                </p>
+                <div className="flex items-center justify-between text-xs font-bold text-rose-800 bg-rose-100/80 p-3 rounded-xl">
+                  <span>{language === 'hi' ? 'शेष समय:' : 'Lock countdown:'}</span>
+                  <span className="font-mono text-sm font-black">
+                    {Math.floor(lockCountdown / 60)}:{(lockCountdown % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* 4 Large Digit Display Boxes */}
+                <div className={`flex justify-center gap-2.5 sm:gap-3 my-1 ${pinError ? 'animate-shake' : ''}`}>
+                  {[0, 1, 2, 3].map(index => {
+                    const digit = pin[index];
+                    const isActive = index === pin.length && !verifyingPin && !pinUnlockSuccess;
+                    return (
+                      <div
+                        key={index}
+                        className={`w-13 h-15 sm:w-15 sm:h-17 rounded-2xl border-2 flex items-center justify-center text-3xl font-black select-none transition-all duration-200 ${
+                          pinUnlockSuccess
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 scale-105 ring-4 ring-emerald-500/15'
+                            : pinError
+                            ? 'border-rose-400 bg-rose-50/70 text-rose-700'
+                            : digit
+                            ? 'border-amber-500 bg-amber-50/80 text-stone-900 scale-105 shadow-xs ring-4 ring-amber-500/15 animate-pop'
+                            : isActive
+                            ? 'border-amber-400 bg-white ring-4 ring-amber-400/20'
+                            : 'border-stone-200 bg-stone-50/80 text-stone-300'
+                        }`}
+                      >
+                        {digit ? (
+                          <span>{digit}</span>
+                        ) : isActive ? (
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Error Message */}
+                {pinError && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-bold leading-relaxed animate-fade-in">
+                    {pinError}
+                  </div>
+                )}
+
+                {/* Tactile Raised Virtual Keypad */}
+                <div className="grid grid-cols-3 gap-2.5 max-w-xs mx-auto pt-1">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'DEL'].map(btn => {
+                    const isClear = btn === 'C';
+                    const isDelete = btn === 'DEL';
+
+                    return (
+                      <button
+                        key={btn}
+                        type="button"
+                        disabled={verifyingPin || pinUnlockSuccess}
+                        onClick={() => handleKeypadPress(btn)}
+                        className={`h-12 sm:h-13 rounded-2xl font-black text-xl transition-all duration-100 flex items-center justify-center cursor-pointer select-none disabled:opacity-50 active:translate-y-[2px] active:shadow-none ${
+                          isClear
+                            ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200/80 shadow-[0_3px_0_0_rgba(225,29,72,0.12)]'
+                            : isDelete
+                            ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/80 shadow-[0_3px_0_0_rgba(217,119,6,0.14)]'
+                            : 'bg-stone-50 hover:bg-amber-50/60 text-stone-900 border border-stone-200/90 shadow-[0_3px_0_0_rgba(28,25,23,0.08)] active:bg-amber-100'
+                        }`}
+                      >
+                        {isDelete ? (
+                          <Delete className="w-5 h-5 text-amber-900" />
+                        ) : isClear ? (
+                          <span className="text-base font-black">C</span>
+                        ) : (
+                          btn
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Open Menu CTA */}
+                <button
+                  type="button"
+                  disabled={pin.length !== 4 || verifyingPin || pinUnlockSuccess}
+                  onClick={() => {
+                    triggerHaptic(40);
+                    handleVerifyPin();
+                  }}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-linear-to-r from-stone-900 to-stone-800 hover:from-stone-800 hover:to-stone-900 active:scale-98 text-amber-400 font-black text-sm shadow-lg shadow-stone-900/20 transition-all disabled:opacity-40 disabled:shadow-none cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {verifyingPin ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                      <span>{language === 'hi' ? 'सत्यापित हो रहा है...' : 'Verifying PIN...'}</span>
+                    </>
+                  ) : pinUnlockSuccess ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-300">{language === 'hi' ? 'खुल रहा है!' : 'Unlocked!'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{language === 'hi' ? 'मेनू खोलें' : 'Open Menu'}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            <p className="text-[11px] text-stone-400 mt-4 leading-normal font-medium">
+              {language === 'hi'
+                ? 'पिन के लिए अपने सर्वर या कैफे मैनेजर से संपर्क करें।'
+                : 'Ask your server or manager for the 4-digit PIN.'}
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   // -------------------------------------------------------------
-  // SCREEN 2: ACTIVE TABLE MENU & ORDERING INTERFACE
+  // SCREEN 2: ACTIVE TABLE MENU, CHECKOUT & ORDER TRACKING
   // -------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-gray-50 pb-28 text-gray-900 font-sans">
-      {/* Top Sticky Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200/80 px-4 py-2.5 sm:py-3 shadow-xs">
+    <div className="min-h-screen bg-[#faf7f2] pb-32 text-stone-900 font-sans">
+      {/* Top Sticky Glassmorphic Header */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-stone-200/80 px-3.5 sm:px-5 py-2.5 shadow-2xs">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
-          {/* Left: Logo + Cafe Name + Table Badge */}
+          {/* Left: Brand Logo, Name, Crisp Non-Wrapping Table Chip & Connection Dot */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-linear-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center font-black text-base shadow-sm shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-linear-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center font-black text-base shadow-sm shrink-0">
               ☕
             </div>
             <div className="min-w-0 flex flex-col justify-center">
-              <div className="flex items-center gap-1.5 flex-nowrap">
-                <span className="font-black text-sm sm:text-base text-gray-900 truncate tracking-tight">
-                  {language === 'hi' ? 'ब्रू एंड बाइट्स' : 'Brew & Bites'}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-black text-sm sm:text-base text-stone-900 truncate tracking-tight">
+                  {language === 'hi' ? 'ब्रू एंड बाइट्स' : cafeName}
                 </span>
-                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200/80 shrink-0">
+                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-200/90 whitespace-nowrap shrink-0">
                   {tableNumber}
                 </span>
               </div>
-              <span className={`text-[10px] sm:text-[11px] font-bold flex items-center gap-1 leading-none mt-0.5 ${realtimeConnected ? 'text-emerald-600' : 'text-amber-600'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${realtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500 animate-ping'}`} />
-                <span>{realtimeConnected ? (language === 'hi' ? 'लाइव टेबल ऑर्डरिंग' : 'Live Table Ordering') : (language === 'hi' ? 'पुनः कनेक्ट हो रहा है...' : 'Reconnecting...')}</span>
+              <span
+                className={`text-[10px] sm:text-[11px] font-bold flex items-center gap-1.5 leading-none mt-0.5 whitespace-nowrap ${
+                  realtimeConnected ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    realtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500 animate-ping'
+                  }`}
+                />
+                <span>
+                  {realtimeConnected
+                    ? language === 'hi'
+                      ? 'लाइव ऑर्डरिंग चालू'
+                      : 'Live Table Ordering'
+                    : language === 'hi'
+                    ? 'पुनः कनेक्ट हो रहा है...'
+                    : 'Reconnecting...'}
+                </span>
               </span>
             </div>
           </div>
 
-          {/* Right: Language switch + Waiter button */}
+          {/* Right: Language Switcher & Compact Call Waiter */}
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
@@ -1018,76 +1065,89 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 triggerHaptic(20);
                 setLanguage(language === 'en' ? 'hi' : 'en');
               }}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-bold text-gray-700 hover:bg-gray-100 active:scale-95 transition cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 text-xs font-extrabold text-stone-700 hover:bg-stone-100 active:scale-95 transition cursor-pointer whitespace-nowrap"
               title="Toggle Hindi / English"
             >
               <Languages className="w-3.5 h-3.5 text-amber-600" />
-              <span>{language === 'en' ? 'हिन्दी' : 'English'}</span>
+              <span>{language === 'en' ? 'हिन्दी' : 'EN'}</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setIsCallWaiterOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold shadow-xs active:scale-95 transition cursor-pointer"
+              onClick={() => {
+                triggerHaptic(25);
+                setIsCallWaiterOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-extrabold shadow-xs active:scale-95 transition cursor-pointer whitespace-nowrap"
             >
               <Bell className="w-3.5 h-3.5 animate-bounce" />
-              <span className="hidden xs:inline">{t('common.callWaiter', 'Call Waiter')}</span>
-              <span className="xs:hidden">{language === 'hi' ? 'वेटर' : 'Waiter'}</span>
+              <span className="hidden sm:inline">{t('common.callWaiter', 'Call Waiter')}</span>
+              <span className="sm:hidden">{language === 'hi' ? 'वेटर' : 'Waiter'}</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Success Notification Banner - Smooth Toast (No shaking/bouncing) */}
+      {/* Smooth Toast Notification on Order Placement */}
       {orderSuccessMessage && (
-        <div className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm bg-linear-to-r from-emerald-600 to-emerald-700 text-white px-4 py-3 rounded-2xl shadow-xl shadow-emerald-950/20 text-xs font-bold flex items-center justify-between gap-3 border border-emerald-400/40 animate-fade-in">
+        <div className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm bg-linear-to-r from-emerald-600 to-emerald-700 text-white px-4 py-3 rounded-2xl shadow-xl shadow-emerald-950/20 text-xs font-bold flex items-center justify-between gap-3 border border-emerald-400/40 animate-fade-in-up">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
               <Check className="w-4 h-4 text-white" />
             </div>
-            <span className="leading-tight text-white/95">
-              {orderSuccessMessage}
-            </span>
+            <span className="leading-snug text-white">{orderSuccessMessage}</span>
           </div>
           <button
             type="button"
             onClick={() => setOrderSuccessMessage(null)}
             className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white shrink-0 cursor-pointer"
           >
-            ✕
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* Top Tab Switcher: Menu vs Orders */}
-      <div className="max-w-3xl mx-auto px-4 pt-3">
-        <div className="bg-gray-200/80 p-1 rounded-2xl flex items-center text-xs font-bold shadow-2xs">
+      {/* Segmented Tab Bar: Menu vs Orders */}
+      <div className="max-w-3xl mx-auto px-3.5 sm:px-4 pt-3">
+        <div className="bg-stone-200/75 p-1 rounded-2xl flex items-center text-xs font-extrabold shadow-inner">
           <button
             type="button"
-            onClick={() => setActiveTab('menu')}
-            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
+            onClick={() => {
+              triggerHaptic(20);
+              setActiveTab('menu');
+            }}
+            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
               activeTab === 'menu'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white text-stone-900 shadow-sm'
+                : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <UtensilsCrossed className="w-4 h-4 text-amber-600" />
+            <UtensilsCrossed className={`w-4 h-4 ${activeTab === 'menu' ? 'text-amber-600' : 'text-stone-500'}`} />
             <span>{language === 'hi' ? 'मेनू' : 'Menu'}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('orders')}
-            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
+            onClick={() => {
+              triggerHaptic(20);
+              setActiveTab('orders');
+            }}
+            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
               activeTab === 'orders'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white text-stone-900 shadow-sm'
+                : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <ClipboardList className="w-4 h-4 text-amber-600" />
+            <ClipboardList className={`w-4 h-4 ${activeTab === 'orders' ? 'text-amber-600' : 'text-stone-500'}`} />
             <span>{language === 'hi' ? 'ऑर्डर्स' : 'Orders'}</span>
             {tableOrders.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-white shadow-2xs">
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black transition-all ${
+                  hasReadyOrder
+                    ? 'bg-blue-600 text-white animate-pulse'
+                    : 'bg-amber-500 text-white'
+                }`}
+              >
                 {tableOrders.reduce((sum, o) => sum + (o.order_items?.length || 0), 0)}
               </span>
             )}
@@ -1095,499 +1155,568 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         </div>
       </div>
 
-      {/* Main Body */}
-      <main className="max-w-3xl mx-auto px-4 pt-4 space-y-4">
+      {/* Main Content Area */}
+      <main className="max-w-3xl mx-auto px-3.5 sm:px-4 pt-3.5 space-y-3.5">
         {activeTab === 'menu' ? (
-          <>
-        {/* Search Bar */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder={language === 'hi' ? 'मेनू में खोजें (कॉफ़ी, सैंडविच, चाट)...' : 'Search items, coffee, bites...'}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-2xl border border-gray-200 bg-white focus:outline-hidden focus:border-amber-500 shadow-2xs transition"
-          />
-        </div>
-
-        {/* Filter & Sort Controls Row */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {/* Veg / Non-Veg Diet Filter */}
-          <div className="flex items-center bg-white p-1 rounded-2xl border border-gray-200 shadow-2xs shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic(20);
-                setDietFilter('all');
-              }}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
-                dietFilter === 'all'
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              {language === 'hi' ? 'सभी' : 'All'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic(20);
-                setDietFilter('veg');
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
-                dietFilter === 'veg'
-                  ? 'bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/30'
-                  : 'text-gray-600 hover:text-emerald-700'
-              }`}
-            >
-              <VegNonVegBadge isVeg={true} size="sm" />
-              <span>{language === 'hi' ? 'वेज़' : 'Veg'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic(20);
-                setDietFilter('nonveg');
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
-                dietFilter === 'nonveg'
-                  ? 'bg-rose-50 text-rose-700 ring-2 ring-rose-500/30'
-                  : 'text-gray-600 hover:text-rose-700'
-              }`}
-            >
-              <VegNonVegBadge isVeg={false} size="sm" />
-              <span>{language === 'hi' ? 'नॉन-वेज़' : 'Non-Veg'}</span>
-            </button>
-          </div>
-
-          {/* Sort By Price Filter Pill */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic(20);
-                setSortBy(sortBy === 'price_asc' ? 'price_desc' : 'price_asc');
-              }}
-              className={`flex items-center gap-1 px-3 py-2 rounded-2xl border text-xs font-bold transition shadow-2xs cursor-pointer ${
-                sortBy === 'price_asc' || sortBy === 'price_desc'
-                  ? 'bg-amber-50 border-amber-300 text-amber-950 ring-2 ring-amber-400/20'
-                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <span>₹</span>
-              <span>
-                {sortBy === 'price_asc'
-                  ? (language === 'hi' ? 'कीमत: कम से ज्यादा' : 'Price: Low to High')
-                  : sortBy === 'price_desc'
-                  ? (language === 'hi' ? 'कीमत: ज्यादा से कम' : 'Price: High to Low')
-                  : (language === 'hi' ? 'कीमत अनुसार' : 'Sort by Price')}
-              </span>
-            </button>
-
-            {sortBy !== 'recommended' && (
-              <button
-                type="button"
-                onClick={() => setSortBy('recommended')}
-                className="px-2.5 py-2 rounded-2xl bg-gray-100 hover:bg-gray-200 text-[11px] font-bold text-gray-500 cursor-pointer"
-                title="Reset sort"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Category Filter Chips Horizontal Scroll */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none py-1">
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-2xs cursor-pointer ${
-              selectedCategory === 'all'
-                ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-600/20'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-amber-50/50 hover:border-amber-200'
-            }`}
-          >
-            {language === 'hi' ? 'सभी' : 'All Items'}
-          </button>
-          {categories.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-2xs cursor-pointer ${
-                selectedCategory === cat.id
-                  ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-600/20'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-amber-50/50 hover:border-amber-200'
-              }`}
-            >
-              {language === 'hi' ? cat.name_hi : cat.name_en}
-            </button>
-          ))}
-        </div>
-
-        {/* Table Orders Quick Banner */}
-        {tableOrders.length > 0 && (
-          <div
-            onClick={() => setIsLiveOrdersOpen(true)}
-            className="p-3 bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl flex items-center justify-between cursor-pointer shadow-xs hover:border-amber-400 transition"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs">
-                {tableOrders.reduce((sum, o) => sum + (o.order_items?.length || 0), 0)}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-900">
-                  {language === 'hi' ? 'टेबल ऑर्डर गतिविधि' : 'Shared Table Order Activity'}
-                </p>
-                <p className="text-[11px] text-gray-600">
-                  {language === 'hi'
-                    ? 'देखें आपने और टेबल के अन्य लोगों ने क्या ऑर्डर किया है।'
-                    : 'Tap to view what you and others at this table ordered.'}
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-amber-700 underline">
-              {language === 'hi' ? 'लाइव देखें' : 'View Live'}
-            </span>
-          </div>
-        )}
-
-        {/* Menu Items Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-          {filteredItems.map(item => {
-            const isAvailable = isItemAvailableToday(item);
-            const cartQty = cart.find(c => c.item.id === item.id)?.quantity || 0;
-
-            const primaryName = language === 'hi' ? item.name_hi : item.name_en;
-            const secondaryName = language === 'hi' ? item.name_en : item.name_hi;
-            const description = language === 'hi'
-              ? item.description_hi || item.description_en
-              : item.description_en || item.description_hi;
-
-            return (
-              <div
-                key={item.id}
-                className={`bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs transition-all relative overflow-hidden ${
-                  !isAvailable
-                    ? 'opacity-60 grayscale-[30%] bg-gray-50 border-gray-200 border-dashed'
-                    : 'border-gray-200 hover:border-amber-300'
-                }`}
-              >
-                {/* Photo (Lazy loaded, fallback icon) */}
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 bg-amber-50/50 relative flex items-center justify-center border border-gray-100">
-                  {item.image_url && !failedImages[item.id] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.image_url}
-                      alt={primaryName}
-                      loading="lazy"
-                      onError={() =>
-                        setFailedImages(prev => ({ ...prev, [item.id]: true }))
-                      }
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-amber-600/70 bg-amber-50/70 p-2 text-center">
-                      <UtensilsCrossed className="w-6 h-6 text-amber-500 mb-1" />
-                      <span className="text-[10px] font-semibold text-amber-700/60 leading-none">
-                        Brew &amp; Bites
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Unavailable overlay badge */}
-                  {!isAvailable && (
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-1.5 text-center">
-                      <span className="text-[10px] font-bold text-white uppercase tracking-wider leading-tight">
-                        {language === 'hi' ? 'आज उपलब्ध नहीं है' : 'Not available today'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Item Info */}
-                <div className="flex-1 flex flex-col justify-between min-w-0">
-                  <div>
-                    {/* Header: Veg/Non-veg indicator badge + Primary Name */}
-                    <div className="flex items-start justify-between gap-1.5">
-                      <div className="flex items-start gap-1.5 min-w-0">
-                        <span className="mt-0.5 shrink-0">
-                          <VegNonVegBadge isVeg={item.is_veg} size="sm" />
-                        </span>
-                        <h3 className="font-bold text-sm text-gray-900 leading-snug line-clamp-1">
-                          {primaryName}
-                        </h3>
-                      </div>
-                    </div>
-
-                    {/* Secondary language title */}
-                    <p className="text-[11px] text-gray-400 font-medium line-clamp-1 ml-5">
-                      {secondaryName}
-                    </p>
-
-                    {/* Description */}
-                    {description && (
-                      <p className="text-xs text-gray-500 line-clamp-2 mt-1 leading-relaxed">
-                        {description}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Footer: Price in Rupees & Action Button */}
-                  <div className="flex items-center justify-between mt-2 pt-1 border-t border-gray-100">
-                    <div>
-                      <span className="text-base font-extrabold text-gray-900">
-                        ₹{item.price}
-                      </span>
-                    </div>
-
-                    {/* Actions: Add / Stepper or Disabled "Not available today" */}
-                    {isAvailable ? (
-                      cartQty > 0 ? (
-                        <div className="flex items-center gap-2 bg-amber-500 text-white rounded-xl px-2 py-1 shadow-xs">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.id, -1)}
-                            className="w-5 h-5 flex items-center justify-center font-bold hover:bg-amber-600 rounded-md cursor-pointer"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="text-xs font-bold w-4 text-center">{cartQty}</span>
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.id, 1)}
-                            className="w-5 h-5 flex items-center justify-center font-bold hover:bg-amber-600 rounded-md cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => addToCart(item)}
-                          className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 border border-amber-200 text-xs font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{language === 'hi' ? 'जोड़ें' : 'Add'}</span>
-                        </button>
-                      )
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        className="px-2.5 py-1.5 rounded-xl bg-gray-100 text-gray-400 text-[11px] font-semibold cursor-not-allowed border border-gray-200 flex items-center gap-1"
-                      >
-                        <Ban className="w-3 h-3 shrink-0" />
-                        <span>{language === 'hi' ? 'आज उपलब्ध नहीं है' : 'Not available today'}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {filteredItems.length === 0 && (
-          <div className="py-12 text-center text-gray-400">
-            <p className="text-sm">
-              {language === 'hi' ? 'कोई आइटम नहीं मिला।' : 'No items found matching your filter.'}
-            </p>
-          </div>
-        )}
-      </>
-    ) : (
-      /* ORDERS TAB: REALTIME TABLE SESSION ACTIVITY */
-      <div className="space-y-4 animate-fade-in">
-        {tableOrders.length === 0 ? (
-          <div className="py-16 text-center text-gray-400 bg-white rounded-3xl border border-gray-200 p-8 shadow-xs">
-            <UtensilsCrossed className="w-14 h-14 mx-auto mb-3 opacity-30 text-amber-600" />
-            <h3 className="text-base font-bold text-gray-700">
-              {language === 'hi' ? 'अभी कोई ऑर्डर नहीं है' : 'No orders placed yet'}
-            </h3>
-            <p className="text-xs text-gray-500 mt-1 mb-5">
-              {language === 'hi'
-                ? 'मेनू ब्राउज़ करें और अपना पहला ऑर्डर दें!'
-                : 'Browse the menu and place your first round of order!'}
-            </p>
-            <button
-              type="button"
-              onClick={() => setActiveTab('menu')}
-              className="py-2.5 px-6 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition cursor-pointer"
-            >
-              {language === 'hi' ? 'मेनू देखें' : 'Browse Menu'}
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* 1. "Your order" (Highlighted Section for this device) */}
-            <div className="bg-white rounded-2xl border-2 border-emerald-500/40 p-4 shadow-xs">
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-emerald-100">
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-                  <h3 className="font-extrabold text-sm text-gray-900">
-                    {language === 'hi' ? 'आपका ऑर्डर' : 'Your Order'}
-                  </h3>
-                </div>
-                <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  {language === 'hi' ? 'यह फोन' : 'This Phone'}
-                </span>
-              </div>
-
-              {myOrders.length === 0 ? (
-                <p className="text-xs text-gray-400 italic bg-gray-50 p-3.5 rounded-xl border border-dashed border-gray-200 text-center">
-                  {language === 'hi'
-                    ? 'आपने अभी तक इस फोन से कोई आइटम ऑर्डर नहीं किया है।'
-                    : 'You have not ordered any items from this phone yet.'}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {myOrders.map(order => (
-                    <div
-                      key={order.id}
-                      className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-50/15 shadow-2xs"
-                    >
-                      <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-gray-100">
-                        <span className="text-xs font-semibold text-gray-500">
-                          {new Date(order.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                        {getStatusBadge(order.status)}
-                      </div>
-                      <div className="space-y-2">
-                        {order.order_items?.map(item => (
-                          <div
-                            key={item.id}
-                            className="flex justify-between items-start text-sm"
-                          >
-                            <div>
-                              <span className="font-bold text-gray-800">
-                                {item.quantity}x{' '}
-                                {language === 'hi' ? item.item_name_hi : item.item_name_en}
-                              </span>
-                              {item.item_notes && (
-                                <p className="text-xs text-amber-700 italic mt-0.5">
-                                  Note: {item.item_notes}
-                                </p>
-                              )}
-                            </div>
-                            <span className="font-extrabold text-gray-900 shrink-0 ml-2">
-                              ₹{item.price_per_unit * item.quantity}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          <div className="space-y-3.5 animate-fade-in">
+            {/* Search Input with Instant Clear */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={language === 'hi' ? 'मेनू में खोजें (कॉफ़ी, सैंडविच, चाट)...' : 'Search items, coffee, bites...'}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm rounded-2xl border border-stone-200/90 bg-white focus:outline-hidden focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-2xs transition"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(15);
+                    setSearchQuery('');
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               )}
             </div>
 
-            {/* 2. "Others at your table" (No names shown) */}
-            {otherOrders.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-xs">
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-amber-400" />
-                    <h3 className="font-bold text-sm text-gray-800">
-                      {language === 'hi'
-                        ? 'आपकी टेबल पर अन्य ऑर्डर'
-                        : 'Others at your table'}
-                    </h3>
-                  </div>
-                  <span className="text-xs font-semibold text-gray-500">
-                    {otherOrders.length}{' '}
-                    {otherOrders.length > 1
-                      ? language === 'hi'
-                        ? 'ऑर्डर्स'
-                        : 'orders'
-                      : language === 'hi'
-                      ? 'ऑर्डर'
-                      : 'order'}
-                  </span>
-                </div>
+            {/* Diet Filter & Price Sort Bar */}
+            <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+              <div className="flex items-center bg-white p-1 rounded-2xl border border-stone-200/90 shadow-2xs shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(20);
+                    setDietFilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                    dietFilter === 'all'
+                      ? 'bg-stone-900 text-amber-400 shadow-xs'
+                      : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  {language === 'hi' ? 'सभी' : 'All'}
+                </button>
 
-                <div className="space-y-3">
-                  {otherOrders.map(order => (
-                    <div
-                      key={order.id}
-                      className="p-3.5 rounded-xl border border-gray-200 bg-gray-50/60 shadow-2xs"
-                    >
-                      <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-gray-100">
-                        <span className="text-xs font-medium text-gray-500">
-                          {new Date(order.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                        {getStatusBadge(order.status)}
-                      </div>
-                      <div className="space-y-2">
-                        {order.order_items?.map(item => (
-                          <div
-                            key={item.id}
-                            className="flex justify-between items-start text-sm"
-                          >
-                            <div>
-                              <span className="text-gray-700 font-medium">
-                                {item.quantity}x{' '}
-                                {language === 'hi' ? item.item_name_hi : item.item_name_en}
-                              </span>
-                              {item.item_notes && (
-                                <p className="text-xs text-gray-500 italic mt-0.5">
-                                  Note: {item.item_notes}
-                                </p>
-                              )}
-                            </div>
-                            <span className="text-gray-700 font-bold shrink-0 ml-2">
-                              ₹{item.price_per_unit * item.quantity}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(20);
+                    setDietFilter('veg');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                    dietFilter === 'veg'
+                      ? 'bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/35'
+                      : 'text-stone-600 hover:text-emerald-700'
+                  }`}
+                >
+                  <VegNonVegBadge isVeg={true} size="sm" />
+                  <span>{language === 'hi' ? 'वेज़' : 'Veg'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(20);
+                    setDietFilter('nonveg');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer ${
+                    dietFilter === 'nonveg'
+                      ? 'bg-rose-50 text-rose-800 ring-2 ring-rose-500/35'
+                      : 'text-stone-600 hover:text-rose-700'
+                  }`}
+                >
+                  <VegNonVegBadge isVeg={false} size="sm" />
+                  <span>{language === 'hi' ? 'नॉन-वेज़' : 'Non-Veg'}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(20);
+                    setSortBy(
+                      sortBy === 'recommended'
+                        ? 'price_asc'
+                        : sortBy === 'price_asc'
+                        ? 'price_desc'
+                        : 'recommended'
+                    );
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold transition shadow-2xs cursor-pointer whitespace-nowrap ${
+                    sortBy !== 'recommended'
+                      ? 'bg-amber-50 border-amber-300 text-amber-950 ring-2 ring-amber-400/20'
+                      : 'bg-white border-stone-200/90 text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" />
+                  <span>
+                    {sortBy === 'price_asc'
+                      ? language === 'hi'
+                        ? 'कम से ज्यादा'
+                        : 'Price: Low → High'
+                      : sortBy === 'price_desc'
+                      ? language === 'hi'
+                        ? 'ज्यादा से कम'
+                        : 'Price: High → Low'
+                      : language === 'hi'
+                      ? 'कीमत क्रम'
+                      : 'Sort Price'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Category Chips Horizontal Scroll */}
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic(20);
+                  setSelectedCategory('all');
+                }}
+                className={`px-4 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all shadow-2xs cursor-pointer active:scale-95 ${
+                  selectedCategory === 'all'
+                    ? 'bg-linear-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/20'
+                    : 'bg-white text-stone-700 border border-stone-200/90 hover:border-amber-300'
+                }`}
+              >
+                {language === 'hi' ? 'सभी आइटम' : 'All Items'}
+              </button>
+              {categories.map(cat => (
+                <button
+                  type="button"
+                  key={cat.id}
+                  onClick={() => {
+                    triggerHaptic(20);
+                    setSelectedCategory(cat.id);
+                  }}
+                  className={`px-4 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all shadow-2xs cursor-pointer active:scale-95 ${
+                    selectedCategory === cat.id
+                      ? 'bg-linear-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/20'
+                      : 'bg-white text-stone-700 border border-stone-200/90 hover:border-amber-300'
+                  }`}
+                >
+                  {language === 'hi' ? cat.name_hi : cat.name_en}
+                </button>
+              ))}
+            </div>
+
+            {/* Live Table Order Activity Quick Card */}
+            {tableOrders.length > 0 && (
+              <div
+                onClick={() => {
+                  triggerHaptic(25);
+                  setIsLiveOrdersOpen(true);
+                }}
+                className="p-3.5 bg-linear-to-r from-stone-900 via-stone-900 to-amber-950 text-white border border-amber-500/30 rounded-2xl flex items-center justify-between cursor-pointer shadow-md hover:border-amber-400 active:scale-[0.99] transition"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 text-amber-400 flex items-center justify-center font-black text-xs shrink-0">
+                    {tableOrders.reduce((sum, o) => sum + (o.order_items?.length || 0), 0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-extrabold text-white flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                      <span className="truncate">
+                        {language === 'hi' ? 'टेबल के लाइव ऑर्डर' : 'Shared Table Live Activity'}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-stone-300 truncate mt-0.5">
+                      {hasReadyOrder
+                        ? language === 'hi'
+                          ? 'आपका ऑर्डर परोसने के लिए तैयार है!'
+                          : 'An order is Ready to Serve at your table!'
+                        : language === 'hi'
+                        ? 'किचन स्टेटस देखने के लिए टैप करें'
+                        : 'Tap to track kitchen progress in realtime'}
+                    </p>
+                  </div>
                 </div>
+                <span className="text-xs font-black text-amber-400 shrink-0 ml-2 flex items-center gap-1">
+                  <span>{language === 'hi' ? 'देखें' : 'Track'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </span>
               </div>
             )}
 
-            {/* Table Running Total & Notice */}
-            <div className="p-4 bg-white rounded-2xl border border-gray-200 shadow-xs space-y-3">
-              <div className="flex justify-between items-center text-sm font-semibold text-gray-900">
-                <span>
-                  {language === 'hi' ? 'टेबल का कुल बिल:' : 'Table Running Total:'}
-                </span>
-                <span className="text-lg text-amber-700 font-black">
-                  ₹{totalTableAmount}
-                </span>
+            {/* Menu Items Grid with Staggered Entrance */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-0.5">
+              {filteredItems.map((item, idx) => {
+                const isAvailable = isItemAvailableToday(item);
+                const cartQty = cart.find(c => c.item.id === item.id)?.quantity || 0;
+
+                const primaryName = language === 'hi' ? item.name_hi : item.name_en;
+                const secondaryName = language === 'hi' ? item.name_en : item.name_hi;
+                const description =
+                  language === 'hi'
+                    ? item.description_hi || item.description_en
+                    : item.description_en || item.description_hi;
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{ animationDelay: `${Math.min(idx * 35, 240)}ms` }}
+                    className={`bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs transition-all relative overflow-hidden animate-fade-in-up ${
+                      !isAvailable
+                        ? 'opacity-65 grayscale-[35%] bg-stone-50 border-stone-200 border-dashed'
+                        : cartQty > 0
+                        ? 'border-amber-400 ring-2 ring-amber-500/15 shadow-sm'
+                        : 'border-stone-200/80 hover:border-amber-300'
+                    }`}
+                  >
+                    {/* Dish Thumbnail (Tap opens Quick View Sheet) */}
+                    <button
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => {
+                        triggerHaptic(20);
+                        const existingCartNote = cart.find(c => c.item.id === item.id)?.notes || '';
+                        setDishModalNote(existingCartNote);
+                        setSelectedDish(item);
+                      }}
+                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 bg-amber-50/70 relative flex items-center justify-center border border-stone-100 cursor-pointer disabled:cursor-default group"
+                    >
+                      {item.image_url && !failedImages[item.id] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.image_url}
+                          alt={primaryName}
+                          loading="lazy"
+                          onError={() => setFailedImages(prev => ({ ...prev, [item.id]: true }))}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-amber-600/70 bg-amber-50/80 p-2 text-center">
+                          <UtensilsCrossed className="w-6 h-6 text-amber-500 mb-1" />
+                          <span className="text-[10px] font-bold text-amber-700/60 leading-none">
+                            Brew &amp; Bites
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Corner In-Cart Quantity Badge */}
+                      {cartQty > 0 && isAvailable && (
+                        <span
+                          key={cartQty}
+                          className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-lg bg-stone-900/90 text-amber-400 text-[10px] font-black shadow-md animate-pop"
+                        >
+                          {cartQty}×
+                        </span>
+                      )}
+
+                      {/* Unavailable Overlay */}
+                      {!isAvailable && (
+                        <div className="absolute inset-0 bg-black/60 backdrop-blur-2xs flex items-center justify-center p-1.5 text-center">
+                          <span className="text-[10px] font-bold text-white uppercase tracking-wider leading-tight">
+                            {language === 'hi' ? 'आज उपलब्ध नहीं है' : 'Sold Out Today'}
+                          </span>
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Dish Details & Price */}
+                    <div className="flex-1 flex flex-col justify-between min-w-0">
+                      <div
+                        onClick={() => {
+                          if (!isAvailable) return;
+                          triggerHaptic(20);
+                          const existingCartNote = cart.find(c => c.item.id === item.id)?.notes || '';
+                          setDishModalNote(existingCartNote);
+                          setSelectedDish(item);
+                        }}
+                        className={isAvailable ? 'cursor-pointer' : ''}
+                      >
+                        <div className="flex items-start justify-between gap-1.5">
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <span className="mt-0.5 shrink-0">
+                              <VegNonVegBadge isVeg={item.is_veg} size="sm" />
+                            </span>
+                            <h3 className="font-extrabold text-sm text-stone-900 leading-snug line-clamp-1">
+                              {primaryName}
+                            </h3>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-stone-400 font-medium line-clamp-1 ml-5">
+                          {secondaryName}
+                        </p>
+
+                        {description && (
+                          <p className="text-xs text-stone-500 line-clamp-2 mt-1 leading-relaxed">
+                            {description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Price & Stepper Row */}
+                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-stone-100">
+                        <span className="text-base font-black text-stone-900 font-mono">
+                          ₹{item.price}
+                        </span>
+
+                        {isAvailable ? (
+                          cartQty > 0 ? (
+                            <div className="flex items-center gap-1.5 bg-stone-900 text-white rounded-xl px-1.5 py-1 shadow-sm animate-pop">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(item.id, -1)}
+                                className="w-6 h-6 flex items-center justify-center font-bold hover:bg-stone-800 active:scale-90 rounded-lg text-amber-400 transition cursor-pointer"
+                                aria-label="Decrease quantity"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <span key={cartQty} className="text-xs font-black w-5 text-center text-white animate-pop font-mono">
+                                {cartQty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(item.id, 1)}
+                                className="w-6 h-6 flex items-center justify-center font-bold bg-amber-500 hover:bg-amber-400 active:scale-90 text-stone-950 rounded-lg transition cursor-pointer"
+                                aria-label="Increase quantity"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => addToCart(item)}
+                              className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-500 hover:text-white active:scale-95 text-amber-900 border border-amber-200 text-xs font-extrabold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>{language === 'hi' ? 'जोड़ें' : 'Add'}</span>
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="px-2.5 py-1.5 rounded-xl bg-stone-100 text-stone-400 text-[11px] font-bold cursor-not-allowed border border-stone-200 flex items-center gap-1"
+                          >
+                            <Ban className="w-3 h-3 shrink-0" />
+                            <span>{language === 'hi' ? 'उपलब्ध नहीं' : 'Unavailable'}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {filteredItems.length === 0 && (
+              <div className="py-12 px-6 text-center bg-white rounded-3xl border border-stone-200/80 shadow-2xs animate-fade-in">
+                <UtensilsCrossed className="w-10 h-10 mx-auto mb-2.5 text-stone-300" />
+                <p className="text-sm font-bold text-stone-600">
+                  {language === 'hi' ? 'कोई व्यंजन नहीं मिला।' : 'No dishes match your filters.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(20);
+                    setSearchQuery('');
+                    setSelectedCategory('all');
+                    setDietFilter('all');
+                    setSortBy('recommended');
+                  }}
+                  className="mt-3 px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-extrabold transition cursor-pointer"
+                >
+                  {language === 'hi' ? 'सभी फ़िल्टर हटाएं' : 'Reset All Filters'}
+                </button>
               </div>
-              <div className="bg-amber-50 rounded-xl p-3 text-center text-xs text-amber-900 font-medium border border-amber-200 leading-normal">
-                ℹ️{' '}
-                {language === 'hi'
-                  ? 'बिल केवल काउंटर पर दिया जाता है। जब आप भोजन समाप्त कर लें, तो कृपया काउंटर पर जाकर बिल का भुगतान करें।'
-                  : 'Billing is done only at the counter. When you are ready, please visit the counter to settle your bill.'}
+            )}
+          </div>
+        ) : (
+          /* ORDERS TAB: REALTIME TRACKER & TABLE FEED */
+          <div className="animate-fade-in">
+            <TableOrdersFeed
+              orders={tableOrders}
+              deviceId={deviceId}
+              language={language}
+              taxEnabled={taxEnabled}
+              gstRatePercent={gstRatePercent}
+              onBrowseMenu={() => {
+                triggerHaptic(20);
+                setActiveTab('menu');
+              }}
+            />
+          </div>
+        )}
+      </main>
+
+      {/* DISH QUICK-VIEW SHEET MODAL */}
+      {selectedDish && (
+        <div
+          onClick={() => setSelectedDish(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md rounded-t-[30px] sm:rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col animate-slide-up max-h-[88vh]"
+          >
+            {/* Photo Banner */}
+            <div className="relative h-52 sm:h-56 bg-amber-50 shrink-0">
+              {selectedDish.image_url && !failedImages[selectedDish.id] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={selectedDish.image_url}
+                  alt={selectedDish.name_en}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-amber-500">
+                  <UtensilsCrossed className="w-12 h-12 mb-1 opacity-70" />
+                  <span className="text-xs font-bold text-amber-700/60">{cafeName}</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setSelectedDish(null)}
+                className="absolute top-3.5 right-3.5 w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 active:scale-90 flex items-center justify-center transition cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              {selectedDish.meal_timing !== 'all_day' && (
+                <span className="absolute bottom-3 left-3.5 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/65 backdrop-blur-sm text-amber-300 text-[11px] font-bold">
+                  <Clock className="w-3 h-3" />
+                  <span>
+                    {selectedDish.meal_timing === 'breakfast'
+                      ? language === 'hi'
+                        ? 'नाश्ता विशेष'
+                        : 'Breakfast Special'
+                      : language === 'hi'
+                      ? 'दोपहर विशेष'
+                      : 'Lunch Special'}
+                  </span>
+                </span>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="mt-1 shrink-0">
+                      <VegNonVegBadge isVeg={selectedDish.is_veg} size="md" />
+                    </span>
+                    <div>
+                      <h3 className="text-lg font-black text-stone-900 leading-snug">
+                        {language === 'hi' ? selectedDish.name_hi : selectedDish.name_en}
+                      </h3>
+                      <p className="text-xs text-stone-400 font-medium">
+                        {language === 'hi' ? selectedDish.name_en : selectedDish.name_hi}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xl font-black text-stone-900 font-mono shrink-0">
+                    ₹{selectedDish.price}
+                  </span>
+                </div>
+
+                {(selectedDish.description_en || selectedDish.description_hi) && (
+                  <p className="text-xs sm:text-sm text-stone-600 mt-2.5 leading-relaxed">
+                    {language === 'hi'
+                      ? selectedDish.description_hi || selectedDish.description_en
+                      : selectedDish.description_en || selectedDish.description_hi}
+                  </p>
+                )}
+              </div>
+
+              {/* Quick Customization Note */}
+              <div className="pt-2 border-t border-stone-100 space-y-2">
+                <label className="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider block">
+                  {language === 'hi' ? 'विशेष निर्देश (वैकल्पिक)' : 'Cooking Instructions (Optional)'}
+                </label>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {NOTE_PRESETS.map(preset => {
+                    const text = language === 'hi' ? preset.hi : preset.en;
+                    const active = dishModalNote.toLowerCase().includes(text.toLowerCase());
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic(20);
+                          if (!active) {
+                            const next = dishModalNote.trim()
+                              ? `${dishModalNote.trim()}, ${text}`
+                              : text;
+                            setDishModalNote(next.slice(0, 150));
+                          }
+                        }}
+                        className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition cursor-pointer ${
+                          active
+                            ? 'bg-stone-900 text-amber-400'
+                            : 'bg-stone-100 hover:bg-amber-50 text-stone-700 border border-stone-200/70'
+                        }`}
+                      >
+                        + {text}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <input
+                  type="text"
+                  maxLength={150}
+                  value={dishModalNote}
+                  onChange={e => setDishModalNote(e.target.value)}
+                  placeholder={
+                    language === 'hi'
+                      ? 'जैसे: कम तीखा, बिना प्याज...'
+                      : 'e.g. Less spicy, extra hot, no onions...'
+                  }
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
+                />
               </div>
             </div>
-          </>
-        )}
-      </div>
-    )}
-  </main>
 
-      {/* Floating Bottom Sticky Bar */}
+            {/* Footer Action */}
+            <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  addToCart(selectedDish, dishModalNote);
+                  setSelectedDish(null);
+                }}
+                className="w-full py-3.5 px-5 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-98 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>
+                  {language === 'hi'
+                    ? `कार्ट में जोड़ें • ₹${selectedDish.price}`
+                    : `Add to Cart • ₹${selectedDish.price}`}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Sticky Cart Bar */}
       {cart.length > 0 && (
-        <div className="fixed bottom-3 left-4 right-4 z-40 max-w-lg mx-auto">
-          <div className="bg-amber-600 text-white p-3.5 rounded-2xl shadow-xl shadow-amber-600/30 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center font-bold">
+        <div className="fixed bottom-3 left-3.5 right-3.5 z-40 max-w-lg mx-auto animate-slide-up">
+          <div className="bg-stone-900 text-white p-3 sm:p-3.5 rounded-2xl shadow-[0_14px_35px_-5px_rgba(28,25,23,0.45)] border border-amber-500/30 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0">
                 <ShoppingBag className="w-5 h-5" />
               </div>
-              <div>
-                <p className="text-xs font-bold text-amber-100 uppercase tracking-wider">
+              <div className="min-w-0">
+                <p
+                  key={cartItemCount}
+                  className="text-[11px] font-bold text-amber-300 uppercase tracking-wider animate-pop"
+                >
                   {cartItemCount}{' '}
                   {cartItemCount === 1
                     ? language === 'hi'
@@ -1597,97 +1726,184 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                     ? 'आइटम कार्ट में'
                     : 'items in cart'}
                 </p>
-                <p className="text-base font-extrabold">₹{cartTotal}</p>
+                <div className="flex items-baseline gap-1.5">
+                  <p className="text-base font-black text-white font-mono">₹{cartTotal}</p>
+                  {taxEnabled && (
+                    <span className="text-[10px] text-stone-400 font-medium">+ GST</span>
+                  )}
+                </div>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={() => {
+                triggerHaptic(25);
                 setCartError(null);
                 setIsCartOpen(true);
               }}
-              className="py-2.5 px-5 bg-white text-amber-800 hover:bg-amber-50 font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+              className="py-2.5 px-4 sm:px-5 bg-linear-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-stone-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 shrink-0"
             >
-              {language === 'hi' ? 'कार्ट देखें' : 'Review & Order'}
+              <span>{language === 'hi' ? 'कार्ट देखें' : 'Review & Order'}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Cart Sheet / Drawer Modal */}
+      {/* Checkout / Cart Sheet Drawer Modal */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg max-h-[88vh] rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl flex flex-col overflow-hidden animate-slide-up">
-            {/* Sheet Header */}
-            <div className="px-5 py-4 bg-amber-600 text-white flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-lg">
-                  {language === 'hi' ? 'आपकी कार्ट' : 'Your Cart'}
-                </h3>
-                <p className="text-xs text-amber-100">{tableNumber}</p>
-              </div>
-              <button
-                onClick={() => setIsCartOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white cursor-pointer"
-              >
-                ✕
-              </button>
+        <div
+          onClick={() => !orderingInProgress && setIsCartOpen(false)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-lg max-h-[90vh] rounded-t-[28px] sm:rounded-3xl bg-[#faf7f2] shadow-2xl flex flex-col overflow-hidden animate-slide-up border border-amber-200/30"
+          >
+            {/* Mobile Drag Handle */}
+            <div className="sm:hidden bg-stone-900 pt-2.5 pb-1 flex justify-center">
+              <span className="w-10 h-1 rounded-full bg-stone-700" />
             </div>
 
-            {/* Sheet Content */}
-            <div className="p-4 overflow-y-auto flex-1 space-y-3.5">
-              {/* Error banner if item became unavailable or session closed */}
+            {/* Sheet Header */}
+            <div className="px-5 py-3.5 bg-stone-900 text-white flex items-center justify-between border-b border-amber-500/20">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base tracking-tight">
+                    {language === 'hi' ? 'आपकी कार्ट' : 'Your Order Cart'}
+                  </h3>
+                  <p className="text-[11px] text-stone-400 font-medium">
+                    {tableNumber} • {cartItemCount} {language === 'hi' ? 'आइटम' : cartItemCount === 1 ? 'item' : 'items'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={orderingInProgress}
+                    onClick={() => {
+                      triggerHaptic(45);
+                      setCart([]);
+                      setIsCartOpen(false);
+                    }}
+                    className="text-[11px] font-bold text-rose-300 hover:text-rose-200 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 transition cursor-pointer"
+                  >
+                    {language === 'hi' ? 'साफ करें' : 'Clear'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={orderingInProgress}
+                  onClick={() => setIsCartOpen(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-90 text-white transition cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Cart Items & Bill Breakdown */}
+            <div className="p-4 overflow-y-auto flex-1 space-y-3">
               {cartError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-start gap-2 animate-shake">
-                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 font-bold flex items-start gap-2 animate-shake">
+                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                   <span>{cartError}</span>
                 </div>
               )}
 
-              {/* Cart Items List */}
               {cart.map(c => (
                 <div
                   key={c.item.id}
-                  className="p-3.5 rounded-2xl border border-gray-200 bg-gray-50/60 flex flex-col gap-2.5"
+                  className="p-3.5 rounded-2xl border border-stone-200/80 bg-white shadow-2xs flex flex-col gap-2.5 animate-fade-in"
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <VegNonVegBadge isVeg={c.item.is_veg} size="sm" />
-                      <span className="font-bold text-sm text-gray-900 line-clamp-1">
-                        {language === 'hi' ? c.item.name_hi : c.item.name_en}
-                      </span>
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Mini thumbnail */}
+                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-amber-50 shrink-0 border border-stone-100 flex items-center justify-center">
+                        {c.item.image_url && !failedImages[c.item.id] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={c.item.image_url}
+                            alt={c.item.name_en}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <UtensilsCrossed className="w-4 h-4 text-amber-500" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <VegNonVegBadge isVeg={c.item.is_veg} size="sm" />
+                          <span className="font-extrabold text-sm text-stone-900 line-clamp-1">
+                            {language === 'hi' ? c.item.name_hi : c.item.name_en}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-stone-400 font-medium font-mono">
+                          ₹{c.item.price} {language === 'hi' ? 'प्रति पीस' : 'each'}
+                        </span>
+                      </div>
                     </div>
-                    <span className="font-extrabold text-sm text-gray-900 shrink-0 ml-2">
+
+                    <span className="font-black text-sm text-stone-900 shrink-0 font-mono">
                       ₹{c.item.price * c.quantity}
                     </span>
                   </div>
 
-                  {/* Quantity Stepper & Price Snapshot */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500 font-medium">
-                      ₹{c.item.price} each
-                    </span>
+                  {/* Stepper + Quick Note Pills */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                      {NOTE_PRESETS.slice(0, 3).map(preset => {
+                        const text = language === 'hi' ? preset.hi : preset.en;
+                        const active = c.notes.toLowerCase().includes(text.toLowerCase());
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => appendNotePreset(c.item.id, c.notes, text)}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap transition cursor-pointer ${
+                              active
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-stone-100 text-stone-600 hover:bg-amber-50 border border-stone-200/70'
+                            }`}
+                          >
+                            + {text}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                    <div className="flex items-center gap-2 bg-amber-500 text-white rounded-xl px-2 py-1 shadow-2xs">
+                    <div className="flex items-center gap-1.5 bg-stone-900 text-white rounded-xl px-1.5 py-1 shadow-xs shrink-0">
                       <button
                         type="button"
                         onClick={() => updateQuantity(c.item.id, -1)}
-                        className="w-5 h-5 flex items-center justify-center font-bold hover:bg-amber-600 rounded-md cursor-pointer"
+                        className="w-6 h-6 flex items-center justify-center font-bold hover:bg-stone-800 active:scale-90 rounded-lg text-amber-400 transition cursor-pointer"
+                        aria-label="Remove or decrease"
                       >
-                        -
+                        {c.quantity === 1 ? <Trash2 className="w-3.5 h-3.5 text-rose-400" /> : <Minus className="w-3.5 h-3.5" />}
                       </button>
-                      <span className="text-xs font-bold w-4 text-center">{c.quantity}</span>
+                      <span key={c.quantity} className="text-xs font-black w-4 text-center font-mono animate-pop">
+                        {c.quantity}
+                      </span>
                       <button
                         type="button"
                         onClick={() => updateQuantity(c.item.id, 1)}
-                        className="w-5 h-5 flex items-center justify-center font-bold hover:bg-amber-600 rounded-md cursor-pointer"
+                        className="w-6 h-6 flex items-center justify-center font-bold bg-amber-500 hover:bg-amber-400 active:scale-90 text-stone-950 rounded-lg transition cursor-pointer"
+                        aria-label="Increase"
                       >
-                        +
+                        <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
 
-                  {/* Optional Note Field (Max 150 characters, e.g. "less spicy") */}
+                  {/* Custom Note Field */}
                   <div className="relative">
                     <input
                       type="text"
@@ -1699,55 +1915,51 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                       }
                       value={c.notes}
                       onChange={e => updateItemNotes(c.item.id, e.target.value)}
-                      className="w-full text-xs px-3 py-2 pr-14 rounded-xl border border-gray-200 bg-white focus:outline-hidden focus:border-amber-500 shadow-2xs"
+                      className="w-full text-xs px-3 py-2 pr-14 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-500 transition"
                     />
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 font-mono select-none">
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-stone-400 font-mono select-none">
                       {(c.notes || '').length}/150
                     </span>
                   </div>
                 </div>
               ))}
 
-              {/* Total & Tax Breakdown */}
-              <div className="pt-3 border-t border-gray-100 space-y-2">
-                <div className="flex justify-between text-xs text-gray-500 font-medium">
+              {/* Bill Summary Card */}
+              <div className="p-4 rounded-2xl bg-white border border-stone-200/80 shadow-2xs space-y-2">
+                <div className="flex justify-between text-xs text-stone-500 font-semibold">
                   <span>{language === 'hi' ? 'आइटम कुल' : 'Items Subtotal'}</span>
-                  <span>₹{cartTotal}</span>
+                  <span className="font-mono text-stone-800">₹{cartTotal}</span>
                 </div>
 
                 {taxEnabled && (
-                  <div className="flex justify-between text-xs text-gray-600 font-semibold">
-                    <span>GST ({gstRatePercent}%):</span>
-                    <span className="text-emerald-700 font-bold">
-                      +₹{(Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2)}
-                    </span>
+                  <div className="flex justify-between text-xs text-stone-500 font-semibold">
+                    <span>GST ({gstRatePercent}%)</span>
+                    <span className="text-emerald-700 font-bold font-mono">+₹{gstAmount.toFixed(2)}</span>
                   </div>
                 )}
 
-                <div className="flex justify-between text-base font-black text-gray-900 pt-1.5 border-t border-dashed border-gray-200">
+                <div className="flex justify-between items-center text-base font-black text-stone-900 pt-2 border-t border-dashed border-stone-200">
                   <span>{language === 'hi' ? 'इस राउंड का कुल' : 'Round Total'}</span>
-                  <span className="text-amber-700 font-black text-lg">
-                    ₹{taxEnabled
-                      ? (cartTotal + Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2)
-                      : cartTotal}
+                  <span className="text-amber-700 font-black text-lg font-mono">
+                    ₹{taxEnabled ? grandTotal.toFixed(2) : cartTotal}
                   </span>
                 </div>
 
-                <p className="text-[11px] text-gray-400 font-medium">
+                <p className="text-[11px] text-stone-400 font-medium">
                   {taxEnabled
-                    ? (language === 'hi'
-                        ? `* कीमतों पर ${gstRatePercent}% GST लागू है।`
-                        : `* Standard ${gstRatePercent}% GST is applicable.`)
-                    : (language === 'hi'
-                        ? '* कोई अतिरिक्त कर नहीं।'
-                        : '* Prices are net (No extra tax).')}
+                    ? language === 'hi'
+                      ? `* कीमतों पर ${gstRatePercent}% GST लागू है।`
+                      : `* Standard ${gstRatePercent}% GST is applied.`
+                    : language === 'hi'
+                    ? '* कोई अतिरिक्त कर नहीं।'
+                    : '* Prices are net (No extra tax).'}
                 </p>
               </div>
 
-              {/* Counter Billing Notice - Professional Design */}
-              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
-                  <Receipt className="w-4 h-4 text-amber-700" />
+              {/* Pay at Counter Notice */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/80 text-xs text-amber-950 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+                  <Receipt className="w-4 h-4" />
                 </div>
                 <div className="leading-snug">
                   <p className="font-black text-xs text-amber-950">
@@ -1756,18 +1968,19 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                   <p className="text-[11px] text-amber-900/80 font-medium mt-0.5">
                     {language === 'hi'
                       ? 'ऑर्डर सीधे किचन भेजा जाएगा। बिल डाइनिंग पूरी होने पर काउंटर पर देना है।'
-                      : 'Order goes straight to kitchen. Consolidated bill is settled at the counter when you finish dining.'}
+                      : 'Order goes straight to kitchen. Settle your consolidated bill at the counter after dining.'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Sheet Footer Buttons */}
-            <div className="p-4 bg-gray-50 border-t border-gray-200 flex gap-2.5">
+            {/* Checkout CTA Footer */}
+            <div className="p-4 bg-white border-t border-stone-200 flex gap-2.5">
               <button
                 type="button"
+                disabled={orderingInProgress}
                 onClick={() => setIsCartOpen(false)}
-                className="py-3 px-4 rounded-xl border border-gray-300 font-semibold text-xs text-gray-700 hover:bg-gray-100 transition cursor-pointer"
+                className="py-3 px-4 rounded-2xl border border-stone-300 font-bold text-xs text-stone-700 hover:bg-stone-100 active:scale-95 transition cursor-pointer"
               >
                 {language === 'hi' ? 'और जोड़ें' : 'Add More'}
               </button>
@@ -1775,20 +1988,22 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 type="button"
                 disabled={orderingInProgress || cart.length === 0}
                 onClick={handlePlaceOrder}
-                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-98 text-white font-bold text-sm shadow-md transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-3.5 px-4 rounded-2xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-98 text-white font-black text-sm shadow-lg shadow-amber-500/25 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
               >
                 {orderingInProgress ? (
-                  <span>
-                    {language === 'hi'
-                      ? 'रसोई में भेजा जा रहा है...'
-                      : 'Sending to Kitchen...'}
-                  </span>
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{language === 'hi' ? 'रसोई में भेजा जा रहा है...' : 'Sending to Kitchen...'}</span>
+                  </>
                 ) : (
-                  <span>
-                    {language === 'hi'
-                      ? `ऑर्डर भेजें (₹${taxEnabled ? (cartTotal + Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2) : cartTotal})`
-                      : `Place Order (₹${taxEnabled ? (cartTotal + Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2) : cartTotal})`}
-                  </span>
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>
+                      {language === 'hi'
+                        ? `ऑर्डर भेजें (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`
+                        : `Place Order (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`}
+                    </span>
+                  </>
                 )}
               </button>
             </div>
@@ -1803,30 +2018,36 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         isOpen={isLiveOrdersOpen}
         onClose={() => setIsLiveOrdersOpen(false)}
         tableNumber={tableNumber}
+        taxEnabled={taxEnabled}
+        gstRatePercent={gstRatePercent}
       />
 
-      {/* Floating Action Buttons Dock (Live Orders Pill + Call Waiter) */}
+      {/* Floating Quick-Dock (Live Orders Pill + Call Waiter) */}
       {isPinVerified && !isSessionEnded && (
-        <div className={`fixed z-30 flex items-center gap-2.5 transition-all duration-300 ${
-          cart.length > 0 ? 'bottom-22 right-4' : 'bottom-5 right-4'
-        }`}>
-          {tableOrders.length > 0 && (
+        <div
+          className={`fixed z-30 right-3.5 flex items-center gap-2 transition-all duration-300 ${
+            cart.length > 0 ? 'bottom-22' : 'bottom-5'
+          }`}
+        >
+          {tableOrders.length > 0 && activeTab !== 'orders' && (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic(30);
                 setIsLiveOrdersOpen(true);
               }}
-              className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-stone-900/95 hover:bg-stone-900 text-amber-400 font-extrabold text-xs shadow-xl shadow-stone-950/20 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
+              className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-stone-900/95 hover:bg-stone-900 text-amber-400 font-extrabold text-xs shadow-xl shadow-stone-950/25 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
               title="View Table Live Orders"
             >
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
               <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
               <span>
-                {language === 'hi' ? `ऑर्डर देखें (${tableOrders.length})` : `Live Orders (${tableOrders.length})`}
+                {language === 'hi'
+                  ? `ऑर्डर (${tableOrders.length})`
+                  : `Live (${tableOrders.length})`}
               </span>
             </button>
           )}
@@ -1837,16 +2058,16 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               triggerHaptic(30);
               setIsCallWaiterOpen(true);
             }}
-            className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs shadow-xl shadow-amber-500/30 border border-white/20 active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs shadow-xl shadow-amber-500/30 border border-white/25 active:scale-95 transition-all cursor-pointer"
             title="Call Waiter"
           >
             <Bell className="w-3.5 h-3.5 animate-bounce" />
-            <span>{language === 'hi' ? 'वेटर बुलाएं' : 'Call Waiter'}</span>
+            <span>{language === 'hi' ? 'वेटर' : 'Waiter'}</span>
           </button>
         </div>
       )}
 
-      {/* Call Waiter Sheet Modal */}
+      {/* Call Waiter Modal */}
       {sessionToken && isPinVerified && !isSessionEnded && (
         <CallWaiterModal
           isOpen={isCallWaiterOpen}
