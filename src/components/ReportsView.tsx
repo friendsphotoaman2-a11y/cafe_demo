@@ -41,18 +41,19 @@ interface Props {
 }
 
 export function ReportsView({ settings }: Props) {
-  const [range, setRange] = useState<'today' | 'yesterday' | 'last_7_days' | 'last_30_days' | 'custom'>('last_7_days');
+  const [range, setRange] = useState<'all_time' | 'today' | 'yesterday' | 'last_7_days' | 'last_30_days' | 'custom'>('last_7_days');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ReportsData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchReports = useCallback(async () => {
-    setLoading(true);
+  const fetchReports = useCallback(async (forceRefresh = false, silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       let url = `/api/manager/reports?range=${range}`;
+      if (forceRefresh) url += '&refresh=true';
       if (range === 'custom') {
         if (customFrom) url += `&from=${customFrom}`;
         if (customTo) url += `&to=${customTo}`;
@@ -62,7 +63,8 @@ export function ReportsView({ settings }: Props) {
       if (json.success) {
         setData(json);
       } else {
-        setError(json.message || 'Failed to load reports.');
+        setData(null);
+        setError(json.message || 'Failed to load reports from Google Sheets.');
       }
     } catch {
       setError('Network error while loading reports.');
@@ -73,6 +75,20 @@ export function ReportsView({ settings }: Props) {
 
   useEffect(() => {
     fetchReports();
+  }, [fetchReports]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchReports(true, true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchReports(true, true);
+    }, 20000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(interval);
+    };
   }, [fetchReports]);
 
   const sheetId = data?.google_sheet_id || settings.google_sheet_id || '1lqe2AlMhSUuXPcVIUBryfBUiL-us8r_5DzPDTwcCMUY';
@@ -87,7 +103,7 @@ export function ReportsView({ settings }: Props) {
             <span>Sales Reports &amp; Analytics</span>
           </h2>
           <p className="text-xs text-stone-400 mt-0.5">
-            Daily sales breakdown, best-selling dishes, and table turnover from Supabase (last 30 days).
+            Daily sales breakdown, best-selling dishes, and table turnover calculated live from Google Sheets.
           </p>
         </div>
 
@@ -95,6 +111,7 @@ export function ReportsView({ settings }: Props) {
         <div className="flex items-center gap-1 bg-stone-900 border border-stone-800 p-1 rounded-2xl overflow-x-auto scrollbar-none max-w-full">
           {(
             [
+              { id: 'all_time', label: 'All Time' },
               { id: 'today', label: 'Today' },
               { id: 'yesterday', label: 'Yesterday' },
               { id: 'last_7_days', label: 'Last 7 Days' },
@@ -115,7 +132,7 @@ export function ReportsView({ settings }: Props) {
             </button>
           ))}
           <button
-            onClick={fetchReports}
+            onClick={() => fetchReports(true)}
             className="p-2 text-stone-400 hover:text-amber-400 rounded-xl hover:bg-stone-800 transition cursor-pointer shrink-0"
             title="Refresh Reports"
           >
@@ -151,7 +168,7 @@ export function ReportsView({ settings }: Props) {
             </div>
           </div>
           <button
-            onClick={fetchReports}
+            onClick={() => fetchReports(true)}
             className="min-h-[38px] py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs transition cursor-pointer"
           >
             Apply
@@ -159,7 +176,7 @@ export function ReportsView({ settings }: Props) {
         </div>
       )}
 
-      {/* Notice Banner: 30-day Supabase vs Google Sheets Archive */}
+      {/* Live Google Sheets Source Banner */}
       <div className="p-4 rounded-3xl bg-gradient-to-r from-stone-900 via-stone-900 to-amber-950/40 border border-stone-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
@@ -167,13 +184,13 @@ export function ReportsView({ settings }: Props) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white">Live Data from Supabase (Last 30 Days)</span>
+              <span className="text-xs font-bold text-white">Live Data from Google Sheets (All-Time)</span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Connected
+                Realtime Synced
               </span>
             </div>
             <p className="text-[11px] text-stone-400 mt-0.5">
-              Showing active 30-day records. Older historical records live permanently in the Google Sheet archive.
+              Reports reflect every addition or deletion in your Google Sheets Orders &amp; OrderItems tabs.
             </p>
           </div>
         </div>

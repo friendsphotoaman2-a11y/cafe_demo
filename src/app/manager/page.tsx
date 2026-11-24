@@ -36,6 +36,7 @@ import {
   setAudioVolume,
 } from '@/lib/audio-chime';
 import { apiUrl, getCookiePath } from '@/lib/base-path';
+import { formatSheetDate, formatSheetDateTime } from '@/lib/date-utils';
 import {
   KeyRound,
   UtensilsCrossed,
@@ -99,7 +100,7 @@ export default function ManagerDashboard() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [waiterCalls, setWaiterCalls] = useState<WaiterCall[]>([]);
-  const [recentBills, setRecentBills] = useState<Bill[]>([]);
+  // recentBills removed — all bill history now lives exclusively in Google Sheets
   const [settings, setSettings] = useState<ManagerSettings>({
     id: 1,
     cafe_name: 'Brew & Bites Cafe',
@@ -341,13 +342,7 @@ export default function ManagerDashboard() {
       .limit(20);
     if (callData) setWaiterCalls(callData as WaiterCall[]);
 
-    // Recent Bills (for Reports & Billing History)
-    const { data: billsData } = await supabase
-      .from('bills')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(30);
-    if (billsData) setRecentBills(billsData as Bill[]);
+    // Bills now live exclusively in Google Sheets — no Supabase bills fetch
 
     // Settings
     try {
@@ -405,9 +400,6 @@ export default function ManagerDashboard() {
         loadAllData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => {
-        loadAllData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, () => {
         loadAllData();
       })
       .subscribe(status => {
@@ -850,7 +842,7 @@ export default function ManagerDashboard() {
               {
                 bill: data.bill,
                 items: data.items || [],
-                source: data.source || 'supabase',
+                source: data.source || 'google_sheets',
               },
             ],
           });
@@ -863,41 +855,12 @@ export default function ManagerDashboard() {
         setCustomerHistory(null);
         setSearchError(
           data.message ||
-            `No invoice found for "${q}" in Supabase or Google Sheets archive.`
+            `No invoice found for "${q}" in Google Sheets.`
         );
       }
     } catch {
       setCustomerHistory(null);
       setSearchError('Invoice search failed. Please verify network connection.');
-    } finally {
-      setSearchingInvoice(false);
-    }
-  }
-
-  async function handleInspectRecentBill(b: Bill) {
-    setSearchingInvoice(true);
-    try {
-      const res = await fetch(apiUrl(`/api/manager/invoices/search?q=${encodeURIComponent(b.invoice_number)}`));
-      const data = await res.json();
-      if (data.success && data.found) {
-        setInspectedInvoice({
-          bill: data.bill,
-          items: data.items || [],
-          source: data.source || 'supabase',
-        });
-      } else {
-        setInspectedInvoice({
-          bill: b,
-          items: [],
-          source: 'supabase',
-        });
-      }
-    } catch {
-      setInspectedInvoice({
-        bill: b,
-        items: [],
-        source: 'supabase',
-      });
     } finally {
       setSearchingInvoice(false);
     }
@@ -2397,16 +2360,12 @@ export default function ManagerDashboard() {
                       <span>Search Customer History &amp; Invoices</span>
                     </h3>
                     <p className="text-xs text-stone-400">
-                      Search customer visit history and bills across Supabase and Google Sheets all-time archive by Order ID (e.g. ORD-241126-0001) or Phone (e.g. 8604600292).
+                      Search customer visit history and bills live from your Google Sheets archive by Order ID (e.g. ORD-241126-0001) or Phone (e.g. 8604600292).
                     </p>
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-stone-500 font-mono">
                     <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Supabase Live
-                    </span>
-                    <span>&bull;</span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-blue-500"></span> Google Sheets Archive (All-Time)
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span> Google Sheets Realtime (All-Time)
                     </span>
                   </div>
                 </div>
@@ -2515,7 +2474,7 @@ export default function ManagerDashboard() {
                             )}
                             {customerHistory.customer.firstVisit && (
                               <span className="text-stone-500">
-                                First Visit: {new Date(customerHistory.customer.firstVisit).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                First Visit: {formatSheetDate(customerHistory.customer.firstVisit)}
                               </span>
                             )}
                           </div>
@@ -2543,7 +2502,7 @@ export default function ManagerDashboard() {
                           <span>All Visits &amp; Invoices ({customerHistory.invoices.length})</span>
                         </h5>
                         <span className="text-[10px] text-stone-500 font-mono hidden sm:inline">
-                          All-time fetched from Supabase &amp; Google Sheets
+                          All-time fetched live from Google Sheets
                         </span>
                       </div>
 
@@ -2567,12 +2526,13 @@ export default function ManagerDashboard() {
                                 <span className="text-[11px] text-stone-400 block mt-0.5">
                                   {inv.bill.table_number || 'Table'} •{' '}
                                   {inv.bill.created_at
-                                    ? new Date(inv.bill.created_at).toLocaleString('en-IN', {
+                                    ? formatSheetDateTime(inv.bill.created_at, {
                                         day: 'numeric',
                                         month: 'short',
                                         hour: 'numeric',
                                         minute: '2-digit',
                                         hour12: true,
+                                        timeZone: 'Asia/Kolkata',
                                       })
                                     : 'N/A'}
                                 </span>
@@ -2589,19 +2549,9 @@ export default function ManagerDashboard() {
                             </p>
 
                             <div className="flex items-center justify-between pt-1">
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  inv.source === 'supabase'
-                                    ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-blue-950/80 text-blue-400 border border-blue-500/30'
-                                }`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    inv.source === 'supabase' ? 'bg-emerald-400' : 'bg-blue-400'
-                                  }`}
-                                />
-                                {inv.source === 'supabase' ? 'Supabase' : 'Google Sheets'}
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/80 text-blue-400 border border-blue-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                Google Sheets
                               </span>
 
                               <button
@@ -2646,14 +2596,7 @@ export default function ManagerDashboard() {
                                 </td>
                                 <td className="py-2.5 px-3 text-stone-300 whitespace-nowrap font-sans text-xs">
                                   {inv.bill.created_at
-                                    ? new Date(inv.bill.created_at).toLocaleString('en-IN', {
-                                        day: 'numeric',
-                                        month: 'short',
-                                        year: 'numeric',
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                        hour12: true,
-                                      })
+                                    ? formatSheetDateTime(inv.bill.created_at)
                                     : 'N/A'}
                                 </td>
                                 <td className="py-2.5 px-3 font-bold text-amber-300">
@@ -2671,15 +2614,9 @@ export default function ManagerDashboard() {
                                   ₹{inv.bill.total_amount}
                                 </td>
                                 <td className="py-2.5 px-3 whitespace-nowrap">
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                      inv.source === 'supabase'
-                                        ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
-                                        : 'bg-blue-950/80 text-blue-400 border border-blue-500/30'
-                                    }`}
-                                  >
-                                    <span className={`w-1.5 h-1.5 rounded-full ${inv.source === 'supabase' ? 'bg-emerald-400' : 'bg-blue-400'}`} />
-                                    {inv.source === 'supabase' ? 'Supabase' : 'Google Sheets'}
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/80 text-blue-400 border border-blue-500/30">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                    Google Sheets
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-3 text-right whitespace-nowrap font-sans">
@@ -2777,108 +2714,19 @@ export default function ManagerDashboard() {
                 </div>
               </div>
 
-              {/* Recent Billed History */}
+              {/* Recent Billed History — now in Google Sheets, go to Order History tab */}
               <div className="space-y-3 pt-4 border-t border-stone-800">
-                <h3 className="font-bold text-sm text-stone-300 uppercase tracking-wider">
-                  Recent Invoices &amp; Completed Bills ({recentBills.length})
-                </h3>
-
-                {/* Mobile Recent Bills Card View */}
-                <div className="md:hidden space-y-2.5">
-                  {recentBills.map(b => (
-                    <div
-                      key={b.id}
-                      className="bg-stone-900 border border-stone-800 rounded-2xl p-4 space-y-2.5"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-amber-400 text-xs">{b.invoice_number}</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              Synced
-                            </span>
-                          </div>
-                          <p className="text-xs font-bold text-white mt-0.5">
-                            {b.table_number} • {b.customer_name}
-                          </p>
-                          <p className="text-[11px] font-mono text-stone-400">
-                            {b.customer_phone} •{' '}
-                            {new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        <span className="font-mono font-black text-base text-white shrink-0">
-                          ₹{b.total_amount}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => handleInspectRecentBill(b)}
-                        className="w-full min-h-[38px] px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>View / Print Receipt</span>
-                      </button>
-                    </div>
-                  ))}
-                  {recentBills.length === 0 && (
-                    <div className="p-8 text-center text-stone-500 bg-stone-900 border border-stone-800 rounded-2xl text-xs">
-                      No bills settled yet today.
-                    </div>
-                  )}
-                </div>
-
-                {/* Desktop Recent Bills Table */}
-                <div className="hidden md:block overflow-x-auto bg-stone-900 border border-stone-800 rounded-3xl">
-                  <table className="w-full text-left text-xs text-stone-300">
-                    <thead className="bg-stone-950/80 text-stone-400 font-mono text-[11px] uppercase border-b border-stone-800">
-                      <tr>
-                        <th className="p-4">Invoice #</th>
-                        <th className="p-4">Table</th>
-                        <th className="p-4">Customer</th>
-                        <th className="p-4">Phone</th>
-                        <th className="p-4">Total Amount</th>
-                        <th className="p-4">Time</th>
-                        <th className="p-4">Sheets Sync</th>
-                        <th className="p-4 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-800">
-                      {recentBills.map(b => (
-                        <tr key={b.id} className="hover:bg-stone-800/40">
-                          <td className="p-4 font-mono font-bold text-amber-400">{b.invoice_number}</td>
-                          <td className="p-4 font-bold text-white">{b.table_number}</td>
-                          <td className="p-4">{b.customer_name}</td>
-                          <td className="p-4 font-mono">{b.customer_phone}</td>
-                          <td className="p-4 font-mono font-black text-white">₹{b.total_amount}</td>
-                          <td className="p-4 text-stone-400 font-mono">
-                            {new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                          <td className="p-4">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              Synced
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <button
-                              onClick={() => handleInspectRecentBill(b)}
-                              className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 transition inline-flex items-center gap-1.5 cursor-pointer"
-                              title="View & Print Invoice"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>View / Print</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {recentBills.length === 0 && (
-                        <tr>
-                          <td colSpan={8} className="p-8 text-center text-stone-500">
-                            No bills settled yet today.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="p-6 bg-stone-900 border border-stone-800 rounded-2xl text-center space-y-2">
+                  <p className="text-xs text-stone-400">
+                    All completed bills are stored in Google Sheets.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('history')}
+                    className="px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 transition inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    <span>View Order History &amp; Archives</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2889,10 +2737,10 @@ export default function ManagerDashboard() {
           {/* -------------------------------------------------------- */}
           {activeTab === 'history' && (
             <OrderHistoryView
-              onReprintInvoice={bill => {
+              onReprintInvoice={(bill, items) => {
                 setInspectedInvoice({
                   bill,
-                  items: [],
+                  items: items || [],
                   source: 'google_sheets',
                 });
               }}

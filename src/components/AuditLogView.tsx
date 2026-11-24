@@ -15,10 +15,12 @@ import {
   Clock,
   User,
   X,
+  Trash2,
 } from 'lucide-react';
 import { ManagerSettings } from '@/types/database';
 import { AuditLogEntry, AuditAction } from '@/lib/audit-logger';
 import { apiUrl } from '@/lib/base-path';
+import { parseSheetDate } from '@/lib/date-utils';
 
 interface AuditLogResponse {
   success: boolean;
@@ -54,30 +56,83 @@ export function AuditLogView({ settings }: Props) {
     settings.google_sheet_id || '1lqe2AlMhSUuXPcVIUBryfBUiL-us8r_5DzPDTwcCMUY'
   );
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        apiUrl(`/api/manager/audit-logs?action=${actionFilter}&date=${dateFilter}`)
-      );
-      const json = await res.json();
-      if (json.success) {
-        setLogs(json.logs || []);
-        if (json.summary) setSummary(json.summary);
-        if (json.google_sheet_id) setGoogleSheetId(json.google_sheet_id);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    mode: 'single' | 'all';
+    timestamp?: string;
+    entity_id?: string;
+    label: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const fetchLogs = useCallback(
+    async (forceRefresh = false, silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const res = await fetch(
+          apiUrl(
+            `/api/manager/audit-logs?action=${actionFilter}&date=${dateFilter}${
+              forceRefresh ? '&refresh=true' : ''
+            }`
+          )
+        );
+        const json = await res.json();
+        if (json.success) {
+          setLogs(json.logs || []);
+          if (json.summary) setSummary(json.summary);
+          if (json.google_sheet_id) setGoogleSheetId(json.google_sheet_id);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch audit logs:', err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.warn('Failed to fetch audit logs:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [actionFilter, dateFilter]);
+    },
+    [actionFilter, dateFilter]
+  );
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
 
-  // Filter logs by search query (title, actor, entity)
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchLogs(true, true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchLogs(true, true);
+    }, 15000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(interval);
+    };
+  }, [fetchLogs]);
+
+  async function handleConfirmDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      const payload =
+        confirmDelete.mode === 'all'
+          ? { clearAll: true }
+          : { timestamp: confirmDelete.timestamp, entity_id: confirmDelete.entity_id };
+      const res = await fetch(apiUrl('/api/manager/audit-logs'), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setConfirmDelete(null);
+        await fetchLogs(true, true);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const filteredLogs = logs.filter(l => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -116,6 +171,18 @@ export function AuditLogView({ settings }: Props) {
           icon: DollarSign,
           classes: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
         };
+      case 'PIN_MODE_CHANGED':
+        return {
+          label: 'PIN Switch',
+          icon: KeyRound,
+          classes: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+        };
+      case 'SETTINGS_CHANGED':
+        return {
+          label: 'Settings',
+          icon: ToggleLeft,
+          classes: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+        };
       default:
         return {
           label: action,
@@ -127,7 +194,8 @@ export function AuditLogView({ settings }: Props) {
 
   function formatDateTime(iso: string) {
     try {
-      const d = new Date(iso);
+      const d = parseSheetDate(iso);
+      if (!d) return iso;
       return d.toLocaleString('en-IN', {
         day: '2-digit',
         month: 'short',
@@ -145,7 +213,9 @@ export function AuditLogView({ settings }: Props) {
 
   function formatTimeAgo(iso: string) {
     try {
-      const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      const d = parseSheetDate(iso);
+      if (!d) return '';
+      const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
       if (diffSec < 60) return 'Just now';
       if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
       if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
@@ -157,35 +227,53 @@ export function AuditLogView({ settings }: Props) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Top Header & Google Sheet Link */}
+      {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-amber-400" />
-            <span>Audit Log (Read Only)</span>
+            <span>Audit Log (Google Sheets Live)</span>
           </h2>
           <p className="text-xs text-stone-400 mt-0.5">
-            Immutable system activity log: PIN generations, item cancellations, availability toggles, and price changes.
+            Synced directly with your Google Sheet AuditLog tab (no Supabase storage).
           </p>
         </div>
 
-        <a
-          href={`https://docs.google.com/spreadsheets/d/${googleSheetId}`}
-          target="_blank"
-          rel="noreferrer"
-          className="min-h-[40px] py-2 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 active:scale-95 text-stone-200 hover:text-white font-bold text-xs flex items-center gap-2 border border-stone-800 shadow-md transition self-start sm:self-auto cursor-pointer"
-        >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-          <span>Google Sheet AuditLog Tab</span>
-          <ExternalLink className="w-3.5 h-3.5 text-stone-500" />
-        </a>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {summary.total_logs > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setConfirmDelete({
+                  mode: 'all',
+                  label: `Clear ALL ${summary.total_logs} entries from the Google Sheet AuditLog tab?`,
+                })
+              }
+              className="min-h-[40px] py-2 px-3.5 rounded-xl bg-red-950/60 hover:bg-red-900/70 border border-red-800/60 text-red-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Logs</span>
+            </button>
+          )}
+
+          <a
+            href={`https://docs.google.com/spreadsheets/d/${googleSheetId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="min-h-[40px] py-2 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 active:scale-95 text-stone-200 hover:text-white font-bold text-xs flex items-center gap-2 border border-stone-800 shadow-md transition cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>Google Sheet AuditLog Tab</span>
+            <ExternalLink className="w-3.5 h-3.5 text-stone-500" />
+          </a>
+        </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <button
           onClick={() => setActionFilter('ALL')}
-          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-[0.98] cursor-pointer animate-fade-in-up ${
             actionFilter === 'ALL'
               ? 'bg-amber-500/10 border-amber-500 text-amber-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -200,7 +288,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('PIN_GENERATED')}
-          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-[0.98] cursor-pointer animate-fade-in-up ${
             actionFilter === 'PIN_GENERATED'
               ? 'bg-amber-500/10 border-amber-500 text-amber-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -220,7 +308,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('ORDER_CANCELLED')}
-          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-[0.98] cursor-pointer animate-fade-in-up ${
             actionFilter === 'ORDER_CANCELLED'
               ? 'bg-red-500/10 border-red-500 text-red-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -240,7 +328,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('AVAILABILITY_CHANGED')}
-          className={`p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
+          className={`p-4 rounded-2xl border text-left transition active:scale-[0.98] cursor-pointer animate-fade-in-up ${
             actionFilter === 'AVAILABILITY_CHANGED'
               ? 'bg-blue-500/10 border-blue-500 text-blue-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -260,7 +348,7 @@ export function AuditLogView({ settings }: Props) {
 
         <button
           onClick={() => setActionFilter('PRICE_CHANGED')}
-          className={`col-span-2 sm:col-span-1 p-4 rounded-2xl border text-left transition active:scale-98 cursor-pointer animate-fade-in-up ${
+          className={`col-span-2 sm:col-span-1 p-4 rounded-2xl border text-left transition active:scale-[0.98] cursor-pointer animate-fade-in-up ${
             actionFilter === 'PRICE_CHANGED'
               ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
               : 'bg-stone-900 border-stone-800 text-stone-400 hover:border-stone-700'
@@ -281,7 +369,6 @@ export function AuditLogView({ settings }: Props) {
 
       {/* Filter and Search Controls */}
       <div className="bg-stone-900 border border-stone-800 rounded-3xl p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        {/* Search */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-stone-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
@@ -303,7 +390,6 @@ export function AuditLogView({ settings }: Props) {
           )}
         </div>
 
-        {/* Responsive Action & Date Selectors */}
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
           <Filter className="w-4 h-4 text-stone-500 shrink-0 hidden sm:block" />
           <select
@@ -331,7 +417,7 @@ export function AuditLogView({ settings }: Props) {
           </select>
 
           <button
-            onClick={fetchLogs}
+            onClick={() => fetchLogs(true)}
             className="p-2.5 text-stone-400 hover:text-amber-400 rounded-xl bg-stone-950 border border-stone-800 hover:bg-stone-800 transition cursor-pointer shrink-0"
             title="Refresh Audit Logs"
           >
@@ -340,11 +426,11 @@ export function AuditLogView({ settings }: Props) {
         </div>
       </div>
 
-      {/* Audit Log Entries List (Newest First) */}
+      {/* Audit Log Entries List */}
       <div className="bg-stone-900 border border-stone-800 rounded-3xl overflow-hidden shadow-lg">
         <div className="p-4 bg-stone-950/80 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-400 font-mono uppercase tracking-wider">
           <span>Activity Timeline ({filteredLogs.length} events)</span>
-          <span>Newest First &bull; Permanent Record</span>
+          <span>Newest First &bull; Google Sheet Live</span>
         </div>
 
         <div className="divide-y divide-stone-800/80">
@@ -366,80 +452,88 @@ export function AuditLogView({ settings }: Props) {
                   style={{ animationDelay: `${Math.min(idx * 25, 180)}ms` }}
                   className="p-4 lg:p-5 hover:bg-stone-800/30 transition flex flex-col md:flex-row md:items-start justify-between gap-3 text-xs animate-fade-in-up"
                 >
-                {/* Left: Action Icon + Title + Details */}
-                <div className="flex items-start gap-3 min-w-0">
-                  <div
-                    className={`p-2.5 rounded-2xl border shrink-0 ${badge.classes} shadow-xs`}
-                  >
-                    <BadgeIcon className="w-4 h-4" />
-                  </div>
-
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${badge.classes}`}
-                      >
-                        {badge.label}
-                      </span>
-                      <span className="font-bold text-white text-xs lg:text-sm">
-                        {item.title}
-                      </span>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`p-2.5 rounded-2xl border shrink-0 ${badge.classes} shadow-xs`}>
+                      <BadgeIcon className="w-4 h-4" />
                     </div>
 
-                    {/* Metadata line: Actor & Entity */}
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-400">
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3 text-stone-500" />
-                        <span className="font-mono">{item.actor_email}</span>
-                      </span>
-                      <span>&bull;</span>
-                      <span className="font-mono text-stone-500">
-                        {item.entity_type}: <strong className="text-stone-300">{item.entity_id}</strong>
-                      </span>
-                    </div>
-
-                    {/* Formatted details badge/pill */}
-                    {item.details && Object.keys(item.details).length > 0 && (
-                      <div className="pt-1.5 flex flex-wrap gap-1.5">
-                        {Boolean(item.details.reason) && (
-                          <span className="px-2 py-0.5 rounded-lg bg-red-950/60 text-red-300 border border-red-900/40 text-[10px]">
-                            Reason: <strong>{String(item.details.reason)}</strong>
-                          </span>
-                        )}
-                        {Boolean(item.details.pin_code) && (
-                          <span className="px-2 py-0.5 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-900/40 text-[10px] font-mono">
-                            PIN: <strong>{String(item.details.pin_code)}</strong>
-                          </span>
-                        )}
-                        {item.details.old_price !== undefined && item.details.new_price !== undefined && (
-                          <span className="px-2 py-0.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-900/40 text-[10px] font-mono">
-                            Price: ₹{String(item.details.old_price)} &rarr; ₹{String(item.details.new_price)}
-                          </span>
-                        )}
-                        {item.details.is_available !== undefined && (
-                          <span className="px-2 py-0.5 rounded-lg bg-blue-950/60 text-blue-300 border border-blue-900/40 text-[10px]">
-                            Status: <strong>{item.details.is_available ? 'Available' : 'Unavailable Today'}</strong>
-                          </span>
-                        )}
-                        {item.details.reset_count !== undefined && (
-                          <span className="px-2 py-0.5 rounded-lg bg-purple-950/60 text-purple-300 border border-purple-900/40 text-[10px]">
-                            Auto-reset: <strong>{String(item.details.reset_count)} items</strong>
-                          </span>
-                        )}
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${badge.classes}`}>
+                          {badge.label}
+                        </span>
+                        <span className="font-bold text-white text-xs lg:text-sm">{item.title}</span>
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Right: Timestamp */}
-                <div className="shrink-0 md:text-right font-mono text-[11px] text-stone-400 pl-11 md:pl-0">
-                  <div className="flex items-center md:justify-end gap-1 text-white font-medium">
-                    <Clock className="w-3 h-3 text-stone-500" />
-                    <span>{formatDateTime(item.timestamp)}</span>
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-400">
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3 text-stone-500" />
+                          <span className="font-mono">{item.actor_email}</span>
+                        </span>
+                        <span>&bull;</span>
+                        <span className="font-mono text-stone-500">
+                          {item.entity_type}: <strong className="text-stone-300">{item.entity_id}</strong>
+                        </span>
+                      </div>
+
+                      {item.details && Object.keys(item.details).length > 0 && (
+                        <div className="pt-1.5 flex flex-wrap gap-1.5">
+                          {Boolean(item.details.reason) && (
+                            <span className="px-2 py-0.5 rounded-lg bg-red-950/60 text-red-300 border border-red-900/40 text-[10px]">
+                              Reason: <strong>{String(item.details.reason)}</strong>
+                            </span>
+                          )}
+                          {Boolean(item.details.pin_code) && (
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-900/40 text-[10px] font-mono">
+                              PIN: <strong>{String(item.details.pin_code)}</strong>
+                            </span>
+                          )}
+                          {item.details.old_price !== undefined && item.details.new_price !== undefined && (
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-900/40 text-[10px] font-mono">
+                              Price: ₹{String(item.details.old_price)} &rarr; ₹{String(item.details.new_price)}
+                            </span>
+                          )}
+                          {item.details.is_available !== undefined && (
+                            <span className="px-2 py-0.5 rounded-lg bg-blue-950/60 text-blue-300 border border-blue-900/40 text-[10px]">
+                              Status: <strong>{item.details.is_available ? 'Available' : 'Unavailable Today'}</strong>
+                            </span>
+                          )}
+                          {item.details.reset_count !== undefined && (
+                            <span className="px-2 py-0.5 rounded-lg bg-purple-950/60 text-purple-300 border border-purple-900/40 text-[10px]">
+                              Auto-reset: <strong>{String(item.details.reset_count)} items</strong>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {timeAgo && <span className="text-[10px] text-stone-500 block mt-0.5">{timeAgo}</span>}
+
+                  <div className="shrink-0 flex items-center justify-between md:justify-end gap-3 pl-11 md:pl-0">
+                    <div className="md:text-right font-mono text-[11px] text-stone-400">
+                      <div className="flex items-center md:justify-end gap-1 text-white font-medium">
+                        <Clock className="w-3 h-3 text-stone-500" />
+                        <span>{formatDateTime(item.timestamp)}</span>
+                      </div>
+                      {timeAgo && <span className="text-[10px] text-stone-500 block mt-0.5">{timeAgo}</span>}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfirmDelete({
+                          mode: 'single',
+                          timestamp: item.timestamp,
+                          entity_id: item.entity_id,
+                          label: `Delete audit entry "${item.title}" from Google Sheets?`,
+                        })
+                      }
+                      className="p-1.5 rounded-xl bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-800/40 transition cursor-pointer"
+                      title="Delete entry from Google Sheet"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
               );
             })
           )}
@@ -448,15 +542,64 @@ export function AuditLogView({ settings }: Props) {
             <div className="p-12 text-center text-stone-500 space-y-2">
               <ShieldAlert className="w-10 h-10 mx-auto opacity-30 text-amber-500" />
               <p className="text-xs font-semibold text-stone-400">
-                No audit records found matching your filters.
+                No audit records in Google Sheet.
               </p>
               <p className="text-[11px] text-stone-500">
-                Actions like generating PINs, cancelling items, toggling availability, or editing prices will be logged here.
+                Actions like generating PINs, cancelling items, toggling availability, or editing prices log directly to Google Sheets.
               </p>
             </div>
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div
+          onClick={() => !deleting && setConfirmDelete(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/80 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-stone-900 border border-red-900/60 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl space-y-4 animate-slide-up sm:animate-scale-up"
+          >
+            <div className="w-10 h-1 rounded-full bg-stone-700 mx-auto -mt-1 sm:hidden" />
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-red-950/80 text-red-400 border border-red-800/60 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">Delete Audit Log</h3>
+                <p className="text-xs text-stone-400">
+                  This deletes directly from your Google Sheet AuditLog tab.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-stone-200 bg-stone-950 p-3.5 rounded-2xl border border-stone-800 leading-relaxed">
+              {confirmDelete.label}
+            </p>
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition cursor-pointer active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95"
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

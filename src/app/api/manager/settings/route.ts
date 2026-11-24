@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ManagerSettings } from '@/types/database';
 import { verifyManagerAuth } from '@/lib/auth-guard';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 interface SettingsMeta {
   email?: string;
@@ -131,22 +132,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 
-    // Audit log asynchronously in background without delaying settings update response
-    if (prevRequirePin !== newRequirePin || JSON.stringify(existingMeta.table_pin_overrides) !== JSON.stringify(newOverrides)) {
-      Promise.resolve(
-        supabase.from('audit_logs').insert({
-          action: 'AVAILABILITY_CHANGED',
-          actor_email: auth.email || 'manager',
+    // Log PIN settings & overrides directly to Google Sheets AuditLog tab after response
+    if (
+      prevRequirePin !== newRequirePin ||
+      JSON.stringify(existingMeta.table_pin_overrides || {}) !== JSON.stringify(newOverrides || {})
+    ) {
+      const actorEmail = auth.email || 'manager@cafe.com';
+      after(async () => {
+        await recordAuditLog({
+          action: prevRequirePin !== newRequirePin ? 'PIN_MODE_CHANGED' : 'SETTINGS_CHANGED',
+          actor_email: actorEmail,
           entity_type: 'SETTINGS',
           entity_id: 'manager_settings',
+          title:
+            prevRequirePin !== newRequirePin
+              ? `Master Table PIN turned ${newRequirePin ? 'ON' : 'OFF'}`
+              : 'Updated per-table PIN override settings',
           details: {
             previous_require_pin: prevRequirePin,
             new_require_pin: newRequirePin,
             table_pin_overrides: newOverrides,
           },
-          created_at: new Date().toISOString(),
-        })
-      ).catch(() => {});
+        }).catch(err => console.warn('Settings audit log error:', err));
+      });
     }
 
     const mergedSettings: ManagerSettings = {

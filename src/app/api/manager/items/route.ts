@@ -161,6 +161,7 @@ export async function PUT(req: NextRequest) {
       try {
         await recordAuditLog({
           action: 'PRICE_CHANGED',
+          actor_email: auth.email || 'manager@cafe.com',
           entity_type: 'menu_items',
           entity_id: id,
           title: `Price for "${name_en}" changed from ₹${oldItem.price} to ₹${price}`,
@@ -235,6 +236,7 @@ export async function DELETE(req: NextRequest) {
     try {
       await recordAuditLog({
         action: 'MENU_ITEM_DELETED',
+        actor_email: auth.email || 'manager@cafe.com',
         entity_type: 'menu_items',
         entity_id: id,
         title: `Menu item "${itemToDelete?.name_en || id}" deleted`,

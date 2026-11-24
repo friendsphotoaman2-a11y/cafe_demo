@@ -16,7 +16,8 @@ export async function GET() {
 
     const customSheetId = settingsRow?.google_sheet_id || null;
 
-    // 2. Find any unsynced bills
+    // 2. Sync any legacy unsynced bills safely if legacy bills rows exist
+    let syncedCount = 0;
     const { data: unsyncedBills, error: billsErr } = await supabaseAdmin
       .from('bills')
       .select('*')
@@ -24,13 +25,7 @@ export async function GET() {
       .order('created_at', { ascending: true })
       .limit(20);
 
-    if (billsErr) {
-      return NextResponse.json({ success: false, message: billsErr.message }, { status: 500 });
-    }
-
-    let syncedCount = 0;
-
-    if (unsyncedBills && unsyncedBills.length > 0) {
+    if (!billsErr && unsyncedBills && unsyncedBills.length > 0) {
       for (const b of unsyncedBills) {
         const bill = b as Bill;
 
@@ -58,22 +53,21 @@ export async function GET() {
         );
 
         if (syncRes.success) {
-          await supabaseAdmin
-            .from('bills')
-            .update({
-              synced_to_sheets: true,
-              sheets_synced_at: new Date().toISOString(),
-            })
-            .eq('id', bill.id);
+          await supabaseAdmin.from('bills').delete().eq('id', bill.id);
           syncedCount++;
         }
       }
     }
 
-    // 3. Keep Supabase light: Clean up closed sessions and settled orders older than 7 days
+    // 3. Keep Supabase light: Clean up closed sessions, resolved waiter calls & old orders older than 7 days
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    
-    // Find closed sessions older than 7 days
+
+    await supabaseAdmin
+      .from('waiter_calls')
+      .delete()
+      .eq('status', 'RESOLVED')
+      .lt('created_at', sevenDaysAgo);
+
     const { data: oldSessions } = await supabaseAdmin
       .from('table_sessions')
       .select('id')
@@ -84,14 +78,12 @@ export async function GET() {
     let purgedSessionsCount = 0;
     if (oldSessions && oldSessions.length > 0) {
       const oldSessionIds = oldSessions.map(s => s.id);
-      
-      // Delete orders associated with old closed sessions
+
       await supabaseAdmin
         .from('orders')
         .delete()
         .in('session_id', oldSessionIds);
 
-      // Delete the old closed sessions
       const { error: sessionDelErr } = await supabaseAdmin
         .from('table_sessions')
         .delete()

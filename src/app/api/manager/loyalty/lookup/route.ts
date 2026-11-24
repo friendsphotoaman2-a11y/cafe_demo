@@ -22,7 +22,6 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 1. Fetch manager settings for loyalty threshold (default N = 5) and Google Sheet ID
     const { data: settingsRow } = await supabaseAdmin
       .from('manager_settings')
       .select('*')
@@ -45,36 +44,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Read ONLY the phone column in the Customers tab of the Google Sheet
-    let previousVisits = 0;
-    let customerName = '';
-    let source = 'sheet';
-
+    // Lookup strictly from Google Sheets Customers tab
     const sheetResult = await lookupCustomerPhoneInSheet(cleanPhone, customSheetId);
+    const previousVisits = sheetResult.found ? sheetResult.previousVisits : 0;
+    const customerName = sheetResult.found ? sheetResult.name || '' : '';
 
-    if (sheetResult.found) {
-      previousVisits = sheetResult.previousVisits;
-      customerName = sheetResult.name || '';
-    } else {
-      // Fallback to Supabase customers table if not in Google Sheet yet
-      source = 'database';
-      const { data: dbCustomer } = await supabaseAdmin
-        .from('customers')
-        .select('*')
-        .eq('phone', cleanPhone)
-        .maybeSingle();
-
-      if (dbCustomer) {
-        previousVisits = dbCustomer.total_visits || 0;
-        customerName = dbCustomer.name || '';
-      }
-    }
-
-    // 3. Rule: free visit when previous visits > 0 and previous visits % N == 0 (N = 5 from settings)
     const isFreeVisit = previousVisits > 0 && previousVisits % loyaltyN === 0;
     const newCount = previousVisits + 1;
-
-    // Stamps collected: e.g. if previousVisits is 3, stamps is 3. If previousVisits is 5, stamps is 5 (full card!).
     const stampsEarned =
       previousVisits > 0 && previousVisits % loyaltyN === 0
         ? loyaltyN
@@ -91,7 +67,7 @@ export async function POST(req: NextRequest) {
       loyalty_n: loyaltyN,
       stamps_earned: stampsEarned,
       stamps_total: loyaltyN,
-      source,
+      source: 'google_sheets',
     });
   } catch (err: unknown) {
     console.error('Error in loyalty lookup:', err);

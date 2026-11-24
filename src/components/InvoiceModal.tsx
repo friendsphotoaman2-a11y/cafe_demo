@@ -2,8 +2,9 @@
 
 import React from 'react';
 import { Bill, OrderItem, ManagerSettings } from '@/types/database';
-import { Printer, Download, X, Receipt, Database, FileSpreadsheet } from 'lucide-react';
+import { Printer, Download, X, Receipt, FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { formatSheetDateTime } from '@/lib/date-utils';
 
 interface Props {
   bill: Bill;
@@ -18,7 +19,7 @@ export function InvoiceModal({
   bill,
   items,
   settings,
-  source = 'supabase',
+  source = 'google_sheets',
   isOpen,
   onClose,
 }: Props) {
@@ -70,7 +71,7 @@ export function InvoiceModal({
     y += 4;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(is58mm ? 6.5 : 7.5);
-    doc.text(`Date: ${new Date(bill.created_at).toLocaleString('en-IN')}`, margin, y);
+    doc.text(`Date: ${formatSheetDateTime(bill.created_at)}`, margin, y);
     y += 4;
     doc.text(`Table: ${bill.table_number}`, margin, y);
     y += 4;
@@ -167,23 +168,11 @@ export function InvoiceModal({
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-base">Invoice Details</h3>
                 <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
-                    source === 'supabase'
-                      ? 'bg-emerald-950 text-emerald-200 border border-emerald-700'
-                      : 'bg-blue-950 text-blue-200 border border-blue-700'
-                  }`}
+                  className="text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 bg-blue-950 text-blue-200 border border-blue-700"
+                  data-source={source}
                 >
-                  {source === 'supabase' ? (
-                    <>
-                      <Database className="w-2.5 h-2.5" />
-                      <span>Supabase (30d)</span>
-                    </>
-                  ) : (
-                    <>
-                      <FileSpreadsheet className="w-2.5 h-2.5" />
-                      <span>Google Sheets</span>
-                    </>
-                  )}
+                  <FileSpreadsheet className="w-2.5 h-2.5" />
+                  <span>Google Sheets</span>
                 </span>
               </div>
               <p className="text-xs text-amber-100 font-mono">#{bill.invoice_number}</p>
@@ -216,7 +205,7 @@ export function InvoiceModal({
 
             <div className="py-2 border-b border-dashed border-stone-300 space-y-0.5 text-[11px]">
               <p className="font-bold">ID: {bill.invoice_number}</p>
-              <p>Date: {new Date(bill.created_at).toLocaleString('en-IN')}</p>
+              <p>Date: {formatSheetDateTime(bill.created_at)}</p>
               <p>Table: {bill.table_number}</p>
               <p>Customer: {bill.customer_name}</p>
               <p>Phone: {bill.customer_phone}</p>

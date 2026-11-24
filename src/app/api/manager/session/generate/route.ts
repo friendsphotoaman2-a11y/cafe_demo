@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { verifyManagerAuth } from '@/lib/auth-guard';
@@ -36,20 +36,23 @@ export async function POST(req: NextRequest) {
     const tableNum = (sessionResult?.table_number as string) || `Table (${table_id})`;
     const pinCode = (sessionResult?.pin_code || sessionResult?.pin || '') as string;
 
-    // Asynchronously log to Audit Log in background without blocking response
-    recordAuditLog({
-      action: 'PIN_GENERATED',
-      entity_type: 'table_sessions',
-      entity_id: (sessionResult?.session_id as string) || (sessionResult?.id as string) || table_id,
-      title: `PIN generated for ${tableNum} (PIN: ${pinCode})`,
-      details: {
-        table_id,
-        table_number: tableNum,
-        pin_code: pinCode,
-        session_id: sessionResult?.session_id || sessionResult?.id,
-      },
-    }).catch(auditErr => {
-      console.warn('PIN_GENERATED background audit log error:', auditErr);
+    // Log to Google Sheets AuditLog safely after returning HTTP response
+    after(async () => {
+      await recordAuditLog({
+        action: 'PIN_GENERATED',
+        actor_email: auth.email || 'manager@cafe.com',
+        entity_type: 'table_sessions',
+        entity_id: (sessionResult?.session_id as string) || (sessionResult?.id as string) || table_id,
+        title: `PIN generated for ${tableNum} (PIN: ${pinCode})`,
+        details: {
+          table_id,
+          table_number: tableNum,
+          pin_code: pinCode,
+          session_id: sessionResult?.session_id || sessionResult?.id,
+        },
+      }).catch(auditErr => {
+        console.warn('PIN_GENERATED background audit log error:', auditErr);
+      });
     });
 
     return NextResponse.json({ success: true, session: sessionResult });

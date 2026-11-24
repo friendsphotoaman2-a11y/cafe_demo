@@ -1,7 +1,11 @@
-import fs from 'fs';
-import path from 'path';
-import { appendAuditLogToSheet, readAuditLogsFromSheet } from '@/lib/google-sheets';
+import {
+  appendAuditLogToSheet,
+  readAuditLogsFromSheet,
+  deleteAuditLogFromSheet,
+} from '@/lib/google-sheets';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getSheetsCache, setSheetsCache, invalidateSheetsCache } from '@/lib/sheets-cache';
+import { parseSheetDate } from '@/lib/date-utils';
 
 export type AuditAction =
   | 'PIN_GENERATED'
@@ -10,6 +14,7 @@ export type AuditAction =
   | 'PRICE_CHANGED'
   | 'MENU_ITEM_DELETED'
   | 'SETTINGS_CHANGED'
+  | 'PIN_MODE_CHANGED'
   | string;
 
 export interface AuditLogEntry {
@@ -23,44 +28,22 @@ export interface AuditLogEntry {
   details: Record<string, unknown>;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const AUDIT_FILE = path.join(DATA_DIR, 'audit-logs.json');
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function readLocalAuditLogs(): AuditLogEntry[] {
+async function getConfiguredSheetId(): Promise<string | null> {
   try {
-    ensureDataDir();
-    if (!fs.existsSync(AUDIT_FILE)) {
-      return [];
-    }
-    const content = fs.readFileSync(AUDIT_FILE, 'utf-8');
-    const parsed = JSON.parse(content);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.warn('Error reading local audit logs file:', err);
-    return [];
-  }
-}
-
-function writeLocalAuditLogs(entries: AuditLogEntry[]) {
-  try {
-    ensureDataDir();
-    fs.writeFileSync(AUDIT_FILE, JSON.stringify(entries, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('Error writing local audit logs file:', err);
+    const supabaseAdmin = createAdminClient();
+    const { data } = await supabaseAdmin
+      .from('manager_settings')
+      .select('google_sheet_id')
+      .eq('id', 1)
+      .maybeSingle();
+    return data?.google_sheet_id || null;
+  } catch {
+    return null;
   }
 }
 
 /**
- * Records an audit log entry across:
- * 1. Local disk file (instant)
- * 2. Google Sheets AuditLog tab (async background cloud ledger)
- * 3. Supabase audit table (if present)
+ * Records an audit log entry directly in Google Sheets AuditLog tab (no Supabase / disk persistence).
  */
 export async function recordAuditLog(params: {
   action: AuditAction;
@@ -72,7 +55,7 @@ export async function recordAuditLog(params: {
 }): Promise<AuditLogEntry> {
   const actor = params.actor_email || 'manager@cafe.com';
   const timestamp = new Date().toISOString();
-  const id = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const id = `sheet-audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   const newEntry: AuditLogEntry = {
     id,
@@ -85,104 +68,80 @@ export async function recordAuditLog(params: {
     details: params.details || {},
   };
 
-  // 1. Save to local disk
-  try {
-    const existing = readLocalAuditLogs();
-    existing.unshift(newEntry);
-    // Keep last 1000 entries locally
-    if (existing.length > 1000) {
-      existing.length = 1000;
-    }
-    writeLocalAuditLogs(existing);
-  } catch (e) {
-    console.warn('Failed to save audit log to disk:', e);
-  }
+  const customSheetId = await getConfiguredSheetId();
+  await appendAuditLogToSheet(
+    {
+      timestamp,
+      action: params.action,
+      actor,
+      entity_type: params.entity_type,
+      entity_id: params.entity_id,
+      title: params.title,
+      details: params.details || {},
+    },
+    customSheetId
+  ).catch(e => console.warn('Google Sheets audit log append warning:', e));
 
-  // 2. Asynchronously append to Google Sheet AuditLog tab
-  appendAuditLogToSheet({
-    timestamp,
-    action: params.action,
-    actor,
-    entity_type: params.entity_type,
-    entity_id: params.entity_id,
-    title: params.title,
-    details: params.details || {},
-  }).catch(e => console.warn('Background sheet audit log append error:', e));
-
-  // 3. Optional Supabase insert if table exists
-  try {
-    const supabase = createAdminClient();
-    Promise.resolve(
-      supabase.from('audit_logs').insert({
-        action: params.action,
-        actor_email: actor,
-        entity_type: params.entity_type,
-        entity_id: params.entity_id,
-        details: params.details || {},
-        created_at: timestamp,
-      })
-    ).catch(() => {});
-  } catch {
-    // Ignore Supabase table absence
-  }
-
+  invalidateSheetsCache('auditLogs');
   return newEntry;
 }
 
 /**
- * Fetches audit logs sorted newest first, with action and date filters.
+ * Fetches audit logs strictly from Google Sheets AuditLog tab sorted newest first.
  */
 export async function getAuditLogs(options?: {
   action?: string;
-  dateFilter?: string; // 'all' | 'today' | 'yesterday' | 'last_7_days' | 'last_30_days' | 'YYYY-MM-DD'
+  dateFilter?: string;
   limit?: number;
+  forceRefresh?: boolean;
 }): Promise<AuditLogEntry[]> {
-  let logs = readLocalAuditLogs();
+  let logs: AuditLogEntry[] = [];
+  const cached = getSheetsCache<AuditLogEntry[]>('auditLogs', options?.forceRefresh);
 
-  // If local file is empty, fallback to reading from Google Sheets
-  if (logs.length === 0) {
-    try {
-      const sheetLogs = await readAuditLogsFromSheet();
-      if (sheetLogs.length > 0) {
-        logs = sheetLogs as AuditLogEntry[];
-        writeLocalAuditLogs(logs);
-      }
-    } catch {
-      // Ignore
-    }
+  if (cached) {
+    logs = [...cached.data];
+  } else {
+    const customSheetId = await getConfiguredSheetId();
+    const sheetRes = await readAuditLogsFromSheet(customSheetId);
+    logs = sheetRes.success ? (sheetRes.logs as AuditLogEntry[]) : [];
+    setSheetsCache('auditLogs', logs);
   }
 
-  // Sort newest first
-  logs.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
+  logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-  // Filter by action
   if (options?.action && options.action !== 'ALL') {
-    logs = logs.filter(
-      l => l.action.toUpperCase() === options.action?.toUpperCase()
-    );
+    logs = logs.filter(l => l.action.toUpperCase() === options.action?.toUpperCase());
   }
 
-  // Filter by date
   if (options?.dateFilter && options.dateFilter !== 'all') {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    const toIstDate = (ts: string) => {
+      const d = parseSheetDate(ts);
+      return d ? d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : ts.slice(0, 10);
+    };
 
     if (options.dateFilter === 'today') {
-      logs = logs.filter(l => l.timestamp.startsWith(todayStr));
+      logs = logs.filter(l => toIstDate(l.timestamp) === todayStr);
     } else if (options.dateFilter === 'yesterday') {
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const yestStr = yesterday.toISOString().split('T')[0];
-      logs = logs.filter(l => l.timestamp.startsWith(yestStr));
+      const yestStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      logs = logs.filter(l => toIstDate(l.timestamp) === yestStr);
     } else if (options.dateFilter === 'last_7_days') {
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      logs = logs.filter(l => new Date(l.timestamp) >= sevenDaysAgo);
+      logs = logs.filter(l => {
+        const d = parseSheetDate(l.timestamp);
+        return d ? d >= sevenDaysAgo : false;
+      });
     } else if (options.dateFilter === 'last_30_days') {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      logs = logs.filter(l => new Date(l.timestamp) >= thirtyDaysAgo);
+      logs = logs.filter(l => {
+        const d = parseSheetDate(l.timestamp);
+        return d ? d >= thirtyDaysAgo : false;
+      });
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(options.dateFilter)) {
-      logs = logs.filter(l => l.timestamp.startsWith(options.dateFilter!));
+      logs = logs.filter(l => toIstDate(l.timestamp) === options.dateFilter);
     }
   }
 
@@ -191,4 +150,18 @@ export async function getAuditLogs(options?: {
   }
 
   return logs;
+}
+
+/**
+ * Deletes an audit log entry or clears all entries from Google Sheets AuditLog tab.
+ */
+export async function removeAuditLogs(params: {
+  timestamp?: string;
+  entity_id?: string;
+  clearAll?: boolean;
+}) {
+  const customSheetId = await getConfiguredSheetId();
+  const res = await deleteAuditLogFromSheet(params, customSheetId);
+  invalidateSheetsCache('auditLogs');
+  return res;
 }

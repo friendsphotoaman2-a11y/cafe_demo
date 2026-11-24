@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CafeTable, TableSession, Order, OrderItem, Bill, ManagerSettings } from '@/types/database';
 import {
   Receipt,
@@ -99,40 +99,64 @@ export function BillingModal({
     return allItems.filter(it => isCoffeeItem(it.item_name_en));
   }, [allItems]);
 
-  // Lookup customer in Google Sheet Customers tab when 10-digit phone is entered
+  const cleanCustomerPhone = useMemo(
+    () => normalizePhoneNumber(customerPhone),
+    [customerPhone]
+  );
+  const lastLookedUpPhoneRef = useRef<string>('');
+
+  // Lookup customer in Google Sheet Customers tab ONLY when the 10-digit phone changes
   useEffect(() => {
-    const clean = normalizePhoneNumber(customerPhone);
-    if (clean.length === 10) {
-      setLookingUpLoyalty(true);
-      fetch(apiUrl('/api/manager/loyalty/lookup'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: clean }),
-      })
-        .then(res => res.json())
-        .then((data: LoyaltyLookupResult) => {
-          if (data && data.phone === clean) {
-            setLoyaltyData(data);
-            if (!customerName && data.name) {
-              setCustomerName(data.name);
-            }
-            // Auto-select first coffee item if free visit unlocked
-            if (data.is_free_visit && coffeeItems.length > 0 && !selectedFreeCoffeeId) {
-              setSelectedFreeCoffeeId(coffeeItems[0].id);
-            }
-          }
-        })
-        .catch(err => {
-          console.warn('Loyalty lookup error:', err);
-        })
-        .finally(() => {
-          setLookingUpLoyalty(false);
-        });
-    } else {
+    if (!isOpen) return;
+
+    if (cleanCustomerPhone.length !== 10) {
+      lastLookedUpPhoneRef.current = '';
       setLoyaltyData(null);
       setSelectedFreeCoffeeId(null);
+      return;
     }
-  }, [customerPhone, customerName, coffeeItems, selectedFreeCoffeeId]);
+
+    if (lastLookedUpPhoneRef.current === cleanCustomerPhone) {
+      return;
+    }
+    lastLookedUpPhoneRef.current = cleanCustomerPhone;
+
+    let cancelled = false;
+    setLookingUpLoyalty(true);
+
+    fetch(apiUrl('/api/manager/loyalty/lookup'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: cleanCustomerPhone }),
+    })
+      .then(res => res.json())
+      .then((data: LoyaltyLookupResult) => {
+        if (cancelled) return;
+        if (data && data.phone === cleanCustomerPhone) {
+          setLoyaltyData(data);
+          if (data.name) {
+            setCustomerName(prev => (prev.trim() ? prev : data.name || ''));
+          }
+        }
+      })
+      .catch(err => {
+        if (!cancelled) console.warn('Loyalty lookup error:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setLookingUpLoyalty(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cleanCustomerPhone, isOpen]);
+
+  // Auto-select first coffee item if free visit unlocked
+  useEffect(() => {
+    if (loyaltyData?.is_free_visit && coffeeItems.length > 0 && !selectedFreeCoffeeId) {
+      setSelectedFreeCoffeeId(coffeeItems[0].id);
+    }
+  }, [loyaltyData?.is_free_visit, coffeeItems, selectedFreeCoffeeId]);
 
   // Calculate free coffee deduction if selected
   const freeCoffeeDiscount = useMemo(() => {

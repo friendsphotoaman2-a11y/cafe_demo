@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuditLogs } from '@/lib/audit-logger';
+import { getAuditLogs, removeAuditLogs } from '@/lib/audit-logger';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyManagerAuth } from '@/lib/auth-guard';
 
@@ -12,14 +12,11 @@ export async function GET(req: NextRequest) {
     const action = searchParams.get('action') || 'ALL';
     const dateFilter = searchParams.get('date') || 'all';
     const limit = Number(searchParams.get('limit')) || 200;
+    const forceRefresh = searchParams.get('refresh') === 'true';
 
-    // Fetch all logs to compute summary counts
-    const allLogs = await getAuditLogs({ action: 'ALL', dateFilter: 'all' });
+    const allLogs = await getAuditLogs({ action: 'ALL', dateFilter: 'all', forceRefresh });
+    const filteredLogs = await getAuditLogs({ action, dateFilter, limit, forceRefresh: false });
 
-    // Fetch filtered logs
-    const filteredLogs = await getAuditLogs({ action, dateFilter, limit });
-
-    // Fetch Manager Settings for Google Sheet ID
     const supabaseAdmin = createAdminClient();
     const { data: settingsRow } = await supabaseAdmin
       .from('manager_settings')
@@ -28,7 +25,9 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     const googleSheetId =
-      settingsRow?.google_sheet_id || process.env.GOOGLE_SHEET_ID || '1lqe2AlMhSUuXPcVIUBryfBUiL-us8r_5DzPDTwcCMUY';
+      settingsRow?.google_sheet_id ||
+      process.env.GOOGLE_SHEET_ID ||
+      '1lqe2AlMhSUuXPcVIUBryfBUiL-us8r_5DzPDTwcCMUY';
 
     const summary = {
       total_logs: allLogs.length,
@@ -47,6 +46,57 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: unknown) {
     console.error('Audit Logs API error:', err);
+    return NextResponse.json(
+      { success: false, message: err instanceof Error ? err.message : 'Internal error.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const auth = await verifyManagerAuth(req);
+  if (!auth.allowed) return auth.response!;
+
+  try {
+    const { searchParams } = new URL(req.url);
+    let timestamp = (searchParams.get('timestamp') || '').trim();
+    let entityId = (searchParams.get('entityId') || '').trim();
+    let clearAll = searchParams.get('clearAll') === 'true';
+
+    if (!timestamp && !clearAll) {
+      try {
+        const body = await req.json();
+        timestamp = (body.timestamp || '').trim();
+        entityId = (body.entity_id || '').trim();
+        clearAll = Boolean(body.clearAll);
+      } catch {
+        // No body
+      }
+    }
+
+    if (!timestamp && !clearAll) {
+      return NextResponse.json(
+        { success: false, message: 'Provide timestamp or clearAll=true.' },
+        { status: 400 }
+      );
+    }
+
+    const res = await removeAuditLogs({ timestamp, entity_id: entityId, clearAll });
+    if (!res.success) {
+      return NextResponse.json(
+        { success: false, message: res.error || 'Failed to delete from Google Sheet AuditLog.' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      deletedCount: res.deletedCount,
+      message: clearAll
+        ? `Cleared ${res.deletedCount} audit logs from Google Sheet.`
+        : 'Audit log entry deleted from Google Sheet.',
+    });
+  } catch (err: unknown) {
     return NextResponse.json(
       { success: false, message: err instanceof Error ? err.message : 'Internal error.' },
       { status: 500 }

@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       const itemName = (itemData?.name_en as string) || item_id;
       await recordAuditLog({
         action: 'AVAILABILITY_CHANGED',
+        actor_email: auth.email || 'manager@cafe.com',
         entity_type: 'menu_items',
         entity_id: item_id,
         title: `${itemName} marked ${is_available ? 'Available' : 'Unavailable Today'}`,

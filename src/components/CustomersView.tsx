@@ -11,8 +11,11 @@ import {
   Award,
   IndianRupee,
   X,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { apiUrl } from '@/lib/base-path';
+import { formatSheetDate } from '@/lib/date-utils';
 
 interface CustomerRecord {
   phone: string;
@@ -28,39 +31,95 @@ export function CustomersView() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sheetConnected, setSheetConnected] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [cacheAgeSec, setCacheAgeSec] = useState<number | null>(null);
 
-  const fetchCustomers = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setErrorMsg(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    mode: 'single' | 'all';
+    phone?: string;
+    label: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-    try {
-      const params = new URLSearchParams();
-      if (isRefresh) params.set('refresh', 'true');
-      if (searchQuery.trim()) params.set('q', searchQuery.trim());
+  const fetchCustomers = useCallback(
+    async (isRefresh = false, silent = false) => {
+      if (isRefresh) setRefreshing(true);
+      else if (!silent) setLoading(true);
+      setErrorMsg(null);
 
-      const res = await fetch(apiUrl(`/api/manager/customers?${params.toString()}`));
-      const data = await res.json();
+      try {
+        const params = new URLSearchParams();
+        if (isRefresh) params.set('refresh', 'true');
+        if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
-      if (data.success) {
-        setCustomers(data.customers || []);
-        if (data.cacheAgeSec !== undefined) setCacheAgeSec(data.cacheAgeSec);
-      } else {
-        setErrorMsg(data.message || 'Failed to load customers from Google Sheet.');
+        const res = await fetch(apiUrl(`/api/manager/customers?${params.toString()}`));
+        const data = await res.json();
+
+        if (data.success) {
+          setCustomers(data.customers || []);
+          setSheetConnected(data.sheetConnected !== false);
+          if (data.cacheAgeSec !== undefined) setCacheAgeSec(data.cacheAgeSec);
+        } else {
+          setSheetConnected(false);
+          setCustomers([]);
+          setErrorMsg(data.message || 'Failed to load customers from Google Sheet.');
+        }
+      } catch {
+        setErrorMsg('Network error loading customer directory.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch {
-      setErrorMsg('Network error loading customer directory.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [searchQuery]);
+    },
+    [searchQuery]
+  );
 
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  // Realtime sync every 15s when visible + instant sync on tab focus
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchCustomers(true, true);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchCustomers(true, true);
+    }, 15000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(interval);
+    };
+  }, [fetchCustomers]);
+
+  async function handleConfirmDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    setErrorMsg(null);
+
+    try {
+      const payload =
+        confirmDelete.mode === 'all' ? { clearAll: true } : { phone: confirmDelete.phone };
+      const res = await fetch(apiUrl('/api/manager/customers'), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.message || 'Failed to delete customer from Google Sheet.');
+      } else {
+        setConfirmDelete(null);
+        await fetchCustomers(true, true);
+      }
+    } catch {
+      setErrorMsg('Network error while deleting customer.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function handleExportCSV() {
     if (customers.length === 0) return;
@@ -106,21 +165,25 @@ export function CustomersView() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-black text-white tracking-tight">Customer Directory &amp; Loyalty</h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-500/30 text-[10px] font-bold font-mono">
-              Google Sheets Synced
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono border ${
+                sheetConnected
+                  ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/30'
+                  : 'bg-red-950/80 text-red-400 border-red-500/30'
+              }`}
+            >
+              {sheetConnected ? 'Live • Google Sheets' : 'Sheet Disconnected'}
             </span>
           </div>
           <p className="text-xs text-stone-400 mt-0.5">
-            All registered cafe customers with visit counts, lifetime spend, and CSV export.
+            Synced directly from your Google Sheet Customers tab with real-time updates &amp; delete.
             {cacheAgeSec !== null && (
-              <span className="ml-1 text-stone-500 font-mono">
-                (Sheet cached {cacheAgeSec}s ago)
-              </span>
+              <span className="ml-1 text-stone-500 font-mono">(Synced {cacheAgeSec}s ago)</span>
             )}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
             onClick={() => fetchCustomers(true)}
@@ -130,6 +193,22 @@ export function CustomersView() {
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
             <span>Refresh Sheet</span>
           </button>
+
+          {customers.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setConfirmDelete({
+                  mode: 'all',
+                  label: `Delete ALL ${customers.length} customers from Google Sheets?`,
+                })
+              }
+              className="min-h-[40px] py-2 px-3.5 rounded-xl bg-red-950/60 hover:bg-red-900/70 border border-red-800/60 text-red-300 active:scale-95 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Sheet</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -230,8 +309,10 @@ export function CustomersView() {
         ) : customers.length === 0 ? (
           <div className="py-14 px-6 text-center text-stone-500">
             <FileSpreadsheet className="w-10 h-10 mx-auto mb-2.5 opacity-30" />
-            <p className="font-bold text-sm text-stone-300">No customer records found.</p>
-            <p className="text-xs text-stone-500 mt-1">Customers are recorded when billing with phone numbers.</p>
+            <p className="font-bold text-sm text-stone-300">No customers in Google Sheet.</p>
+            <p className="text-xs text-stone-500 mt-1">
+              Customers appear here automatically when bills are settled with phone numbers.
+            </p>
           </div>
         ) : (
           <>
@@ -270,27 +351,30 @@ export function CustomersView() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] font-mono text-stone-500 pt-1">
-                    <span>
-                      First:{' '}
-                      {c.first_visit
-                        ? new Date(c.first_visit).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : 'N/A'}
-                    </span>
-                    <span className="text-stone-400">
-                      Last:{' '}
-                      {c.last_visit
-                        ? new Date(c.last_visit).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })
-                        : 'N/A'}
-                    </span>
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-stone-500 pt-1">
+                    <div>
+                      <span>
+                        First: {formatSheetDate(c.first_visit)}
+                      </span>
+                      <span className="text-stone-400 ml-2">
+                        Last: {formatSheetDate(c.last_visit)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfirmDelete({
+                          mode: 'single',
+                          phone: c.phone,
+                          label: `Delete customer ${c.name} (${c.phone}) from Google Sheets?`,
+                        })
+                      }
+                      className="p-2 rounded-xl bg-red-950/70 hover:bg-red-900/80 text-red-300 border border-red-800/50 transition cursor-pointer"
+                      title="Delete customer from Google Sheet"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -306,7 +390,8 @@ export function CustomersView() {
                     <th className="py-3 px-3">Total Visits</th>
                     <th className="py-3 px-3">First Visit</th>
                     <th className="py-3 px-3">Last Visit</th>
-                    <th className="py-3 px-4 text-right">Lifetime Spend</th>
+                    <th className="py-3 px-3 text-right">Lifetime Spend</th>
+                    <th className="py-3 px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-800/50">
@@ -325,25 +410,29 @@ export function CustomersView() {
                         </span>
                       </td>
                       <td className="py-3.5 px-3 text-stone-400 text-xs font-mono">
-                        {c.first_visit
-                          ? new Date(c.first_visit).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })
-                          : 'N/A'}
+                        {formatSheetDate(c.first_visit)}
                       </td>
                       <td className="py-3.5 px-3 text-stone-300 text-xs font-mono">
-                        {c.last_visit
-                          ? new Date(c.last_visit).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })
-                          : 'N/A'}
+                        {formatSheetDate(c.last_visit)}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-black text-emerald-400 font-mono text-sm">
+                      <td className="py-3.5 px-3 text-right font-black text-emerald-400 font-mono text-sm">
                         ₹{c.total_spent}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmDelete({
+                              mode: 'single',
+                              phone: c.phone,
+                              label: `Delete customer ${c.name} (${c.phone}) from Google Sheets?`,
+                            })
+                          }
+                          className="p-1.5 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/50 transition cursor-pointer"
+                          title="Delete customer from Google Sheet"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -353,6 +442,55 @@ export function CustomersView() {
           </>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div
+          onClick={() => !deleting && setConfirmDelete(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/80 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-stone-900 border border-red-900/60 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl space-y-4 animate-slide-up sm:animate-scale-up"
+          >
+            <div className="w-10 h-1 rounded-full bg-stone-700 mx-auto -mt-1 sm:hidden" />
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-red-950/80 text-red-400 border border-red-800/60 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">Delete Customer</h3>
+                <p className="text-xs text-stone-400">
+                  This removes the row directly from your Google Sheet Customers tab.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-stone-200 bg-stone-950 p-3.5 rounded-2xl border border-stone-800 leading-relaxed">
+              {confirmDelete.label}
+            </p>
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition cursor-pointer active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95"
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,9 +11,12 @@ import {
   FileSpreadsheet,
   Award,
   X,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { apiUrl } from '@/lib/base-path';
-import { Bill } from '@/types/database';
+import { Bill, OrderItem } from '@/types/database';
+import { parseSheetDate } from '@/lib/date-utils';
 
 interface OrderHistoryRecord {
   order_id: string;
@@ -34,7 +37,7 @@ interface OrderHistoryRecord {
 }
 
 interface Props {
-  onReprintInvoice: (bill: Bill) => void;
+  onReprintInvoice: (bill: Bill, items?: OrderItem[]) => void;
 }
 
 export function OrderHistoryView({ onReprintInvoice }: Props) {
@@ -42,6 +45,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sheetConnected, setSheetConnected] = useState<boolean>(true);
 
   // Filters & Pagination
   const [dateRange, setDateRange] = useState<'all' | 'today' | '7days' | '30days'>('all');
@@ -53,53 +57,117 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
   const [totalCount, setTotalCount] = useState(0);
   const [cacheAgeSec, setCacheAgeSec] = useState<number | null>(null);
 
-  const fetchOrderHistory = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setErrorMsg(null);
+  // Delete confirmation modal state
+  const [confirmDelete, setConfirmDelete] = useState<{
+    mode: 'single' | 'all';
+    orderId?: string;
+    label: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        pageSize: String(pageSize),
-        dateRange,
-      });
+  const fetchOrderHistory = useCallback(
+    async (isRefresh = false, silent = false) => {
+      if (isRefresh) setRefreshing(true);
+      else if (!silent) setLoading(true);
+      setErrorMsg(null);
 
-      if (isRefresh) params.set('refresh', 'true');
-      if (tableFilter) params.set('table', tableFilter);
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim();
-        if (/^\d+$/.test(q)) {
-          params.set('phone', q);
-        } else {
-          params.set('orderId', q);
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          pageSize: String(pageSize),
+          dateRange,
+        });
+
+        if (isRefresh) params.set('refresh', 'true');
+        if (tableFilter) params.set('table', tableFilter);
+        if (searchQuery.trim()) {
+          const q = searchQuery.trim();
+          if (/^\d+$/.test(q)) {
+            params.set('phone', q);
+          } else {
+            params.set('orderId', q);
+          }
         }
-      }
 
-      const res = await fetch(apiUrl(`/api/manager/order-history?${params.toString()}`));
-      const data = await res.json();
+        const res = await fetch(apiUrl(`/api/manager/order-history?${params.toString()}`));
+        const data = await res.json();
 
-      if (data.success) {
-        setOrders(data.orders || []);
-        setTotalCount(data.totalCount || 0);
-        setTotalPages(data.totalPages || 1);
-        if (data.cacheAgeSec !== undefined) setCacheAgeSec(data.cacheAgeSec);
-      } else {
-        setErrorMsg(data.message || 'Failed to load order history from Google Sheets.');
+        if (data.success) {
+          setOrders(data.orders || []);
+          setTotalCount(data.totalCount || 0);
+          setTotalPages(data.totalPages || 1);
+          setSheetConnected(data.sheetConnected !== false);
+          if (data.cacheAgeSec !== undefined) setCacheAgeSec(data.cacheAgeSec);
+        } else {
+          setSheetConnected(false);
+          setOrders([]);
+          setTotalCount(0);
+          setErrorMsg(data.message || 'Failed to load order history from Google Sheets.');
+        }
+      } catch {
+        setErrorMsg('Network error loading order history.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch {
-      setErrorMsg('Network error loading order history.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [page, pageSize, dateRange, tableFilter, searchQuery]);
+    },
+    [page, pageSize, dateRange, tableFilter, searchQuery]
+  );
 
   useEffect(() => {
     fetchOrderHistory();
   }, [fetchOrderHistory]);
 
-  // Export CSV
+  // Realtime sync every 15s when visible + instant sync on tab focus
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        fetchOrderHistory(true, true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchOrderHistory(true, true);
+      }
+    }, 15000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(interval);
+    };
+  }, [fetchOrderHistory]);
+
+  async function handleConfirmDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    setErrorMsg(null);
+
+    try {
+      const payload =
+        confirmDelete.mode === 'all'
+          ? { clearAll: true }
+          : { orderId: confirmDelete.orderId };
+
+      const res = await fetch(apiUrl('/api/manager/order-history'), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.message || 'Failed to delete order from Google Sheet.');
+      } else {
+        setConfirmDelete(null);
+        await fetchOrderHistory(true, true);
+      }
+    } catch {
+      setErrorMsg('Network error while deleting order.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function handleExportCSV() {
     if (orders.length === 0) return;
 
@@ -150,9 +218,9 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
     document.body.removeChild(link);
   }
 
-  function handleReprint(o: OrderHistoryRecord) {
+  async function handleReprint(o: OrderHistoryRecord) {
     const billObj: Bill = {
-      id: `bill-${o.order_id}`,
+      id: `sheet-bill-${o.order_id}`,
       invoice_number: o.order_id,
       session_id: '00000000-0000-0000-0000-000000000000',
       table_id: '00000000-0000-0000-0000-000000000000',
@@ -167,33 +235,51 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
       visit_count: o.visit_no,
       is_loyalty_free_coffee: o.free_visit === 'YES',
       synced_to_sheets: true,
-      created_at: o.completed_at || `${o.date} ${o.time}`,
+      created_at:
+        parseSheetDate(o.completed_at)?.toISOString() ||
+        parseSheetDate(`${o.date} ${o.time}`)?.toISOString() ||
+        new Date().toISOString(),
     };
-    onReprintInvoice(billObj);
+
+    try {
+      const res = await fetch(apiUrl(`/api/manager/invoices/search?q=${encodeURIComponent(o.order_id)}`));
+      const data = await res.json();
+      if (data.success && data.found && data.bill) {
+        onReprintInvoice(data.bill, data.items || []);
+        return;
+      }
+    } catch {
+      // fallback to basic bill object
+    }
+    onReprintInvoice(billObj, []);
   }
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Header with Title, Refresh, Export */}
+      {/* Header with Title, Refresh, Clear All, Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-black text-white tracking-tight">Order History &amp; Archives</h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-blue-950/80 text-blue-400 border border-blue-500/30 text-[10px] font-bold font-mono">
-              Google Sheets Synced
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono border ${
+                sheetConnected
+                  ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/30'
+                  : 'bg-red-950/80 text-red-400 border-red-500/30'
+              }`}
+            >
+              {sheetConnected ? 'Live • Google Sheets' : 'Sheet Disconnected'}
             </span>
           </div>
           <p className="text-xs text-stone-400 mt-0.5">
-            Completed counter orders with date filters, pagination, thermal reprint, and CSV export.
+            Synced live with your Google Sheet Orders tab — deletions &amp; new bills reflect automatically.
             {cacheAgeSec !== null && (
-              <span className="ml-1 text-stone-500 font-mono">
-                (Sheet cached {cacheAgeSec}s ago)
-              </span>
+              <span className="ml-1 text-stone-500 font-mono">(Synced {cacheAgeSec}s ago)</span>
             )}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
             onClick={() => fetchOrderHistory(true)}
@@ -203,6 +289,22 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-400' : ''}`} />
             <span>Refresh Sheet</span>
           </button>
+
+          {totalCount > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setConfirmDelete({
+                  mode: 'all',
+                  label: `Delete ALL ${totalCount} orders from Google Sheets?`,
+                })
+              }
+              className="min-h-[40px] py-2 px-3.5 rounded-xl bg-red-950/60 hover:bg-red-900/70 border border-red-800/60 text-red-300 active:scale-95 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Sheet</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -216,7 +318,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
         </div>
       </div>
 
-      {/* Filter Bar (iOS safe input sizes & scrollable pills) */}
+      {/* Filter Bar */}
       <div className="p-3.5 rounded-2xl bg-stone-900/90 border border-stone-800 flex flex-col lg:flex-row lg:items-center gap-2.5">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -246,7 +348,6 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
         </div>
 
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-          {/* Date Range Filter */}
           <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800 overflow-x-auto scrollbar-none max-w-full">
             {(['all', 'today', '7days', '30days'] as const).map(range => (
               <button
@@ -273,7 +374,6 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
             ))}
           </div>
 
-          {/* Table Filter */}
           <input
             type="text"
             placeholder="Table #"
@@ -347,7 +447,6 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
 
       {/* Orders List / Table Container */}
       <div className="rounded-3xl border border-stone-800 bg-stone-900/60 overflow-hidden shadow-lg">
-        {/* Loading Shimmer State */}
         {loading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4].map(n => (
@@ -357,12 +456,14 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
         ) : orders.length === 0 ? (
           <div className="py-14 px-6 text-center text-stone-500">
             <FileSpreadsheet className="w-10 h-10 mx-auto mb-2.5 opacity-30" />
-            <p className="font-bold text-sm text-stone-300">No completed orders found.</p>
-            <p className="text-xs text-stone-500 mt-1">Orders sync to Google Sheets when bills are settled.</p>
+            <p className="font-bold text-sm text-stone-300">No orders in Google Sheet.</p>
+            <p className="text-xs text-stone-500 mt-1">
+              When bills are settled, they appear here in real time from Google Sheets.
+            </p>
           </div>
         ) : (
           <>
-            {/* Mobile & Tablet Card View (No cramped horizontal scroll) */}
+            {/* Mobile & Tablet Card View */}
             <div className="lg:hidden divide-y divide-stone-800/80">
               {orders.map((ord, idx) => (
                 <div
@@ -396,20 +497,36 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                     </span>
                   </div>
 
-                  <p className="text-xs text-stone-300 line-clamp-2">{ord.items || 'Items recorded'}</p>
+                  {ord.items && <p className="text-xs text-stone-300 line-clamp-2">{ord.items}</p>}
 
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center justify-between gap-2 pt-1">
                     <span className="text-[11px] font-mono text-stone-500">
                       Sub: ₹{ord.subtotal} • GST: ₹{ord.tax}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleReprint(ord)}
-                      className="min-h-[38px] py-1.5 px-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <Receipt className="w-3.5 h-3.5" />
-                      <span>Reprint</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleReprint(ord)}
+                        className="min-h-[38px] py-1.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 text-amber-300 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Receipt className="w-3.5 h-3.5" />
+                        <span>Reprint</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmDelete({
+                            mode: 'single',
+                            orderId: ord.order_id,
+                            label: `Delete order ${ord.order_id} (${ord.customer_name}) from Google Sheets?`,
+                          })
+                        }
+                        className="min-h-[38px] py-1.5 px-2.5 rounded-xl bg-red-950/70 hover:bg-red-900/80 active:scale-95 text-red-300 border border-red-800/60 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                        title="Delete from Google Sheets"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -431,7 +548,7 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                     <th className="py-3 px-3">GST</th>
                     <th className="py-3 px-3">Total</th>
                     <th className="py-3 px-3">Status</th>
-                    <th className="py-3 px-3.5 text-right">Reprint</th>
+                    <th className="py-3 px-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-800/50 font-mono">
@@ -464,15 +581,31 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
                         </span>
                       </td>
                       <td className="py-3 px-3.5 text-right whitespace-nowrap font-sans">
-                        <button
-                          type="button"
-                          onClick={() => handleReprint(ord)}
-                          className="py-1.5 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
-                          title="Reprint Invoice"
-                        >
-                          <Receipt className="w-3.5 h-3.5" />
-                          <span>Reprint</span>
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleReprint(ord)}
+                            className="py-1.5 px-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                            title="Reprint Invoice"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            <span>Reprint</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmDelete({
+                                mode: 'single',
+                                orderId: ord.order_id,
+                                label: `Delete order ${ord.order_id} (${ord.customer_name}) permanently from Google Sheets?`,
+                              })
+                            }
+                            className="p-1.5 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/50 transition cursor-pointer"
+                            title="Delete from Google Sheet"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -517,6 +650,55 @@ export function OrderHistoryView({ onReprintInvoice }: Props) {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div
+          onClick={() => !deleting && setConfirmDelete(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-stone-950/80 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-stone-900 border border-red-900/60 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl space-y-4 animate-slide-up sm:animate-scale-up"
+          >
+            <div className="w-10 h-1 rounded-full bg-stone-700 mx-auto -mt-1 sm:hidden" />
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-red-950/80 text-red-400 border border-red-800/60 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">Delete from Google Sheet</h3>
+                <p className="text-xs text-stone-400">
+                  This removes the row(s) directly from your Google Sheet (Orders &amp; OrderItems).
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-stone-200 bg-stone-950 p-3.5 rounded-2xl border border-stone-800 leading-relaxed">
+              {confirmDelete.label}
+            </p>
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition cursor-pointer active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95"
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

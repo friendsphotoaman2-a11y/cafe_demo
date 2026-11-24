@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { verifyManagerAuth } from '@/lib/auth-guard';
@@ -26,6 +26,24 @@ export async function POST(req: NextRequest) {
           p_session_id: session_id,
         });
         if (!rpcErr && rpcData) {
+          const rpcObj = rpcData as Record<string, unknown>;
+          const rpcPin = (rpcObj?.pin_code || rpcObj?.pin || '') as string;
+          const actorEmail = auth.email || 'manager@cafe.com';
+          after(async () => {
+            await recordAuditLog({
+              action: 'PIN_GENERATED',
+              actor_email: actorEmail,
+              entity_type: 'table_sessions',
+              entity_id: (rpcObj?.id as string) || session_id,
+              title: `PIN regenerated${rpcPin ? ` (New PIN: ${rpcPin})` : ''}`,
+              details: {
+                table_id: (rpcObj?.table_id as string) || table_id,
+                pin_code: rpcPin,
+                session_id: (rpcObj?.id as string) || session_id,
+                regenerated: true,
+              },
+            }).catch(auditErr => console.warn('PIN regenerated audit log error:', auditErr));
+          });
           return NextResponse.json({ success: true, session: rpcData });
         }
       } catch {
@@ -60,20 +78,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fire audit log asynchronously in background (do not block client response)
-    recordAuditLog({
-      action: 'PIN_GENERATED',
-      entity_type: 'table_sessions',
-      entity_id: data?.id || session_id || table_id,
-      title: `PIN regenerated (New PIN: ${newPin})`,
-      details: {
-        table_id: data?.table_id || table_id,
-        pin_code: newPin,
-        session_id: data?.id || session_id,
-        regenerated: true,
-      },
-    }).catch(auditErr => {
-      console.warn('PIN regenerated audit log error:', auditErr);
+    // Log PIN regeneration cleanly after response
+    const actorEmail = auth.email || 'manager@cafe.com';
+    after(async () => {
+      await recordAuditLog({
+        action: 'PIN_GENERATED',
+        actor_email: actorEmail,
+        entity_type: 'table_sessions',
+        entity_id: data?.id || session_id || table_id,
+        title: `PIN regenerated (New PIN: ${newPin})`,
+        details: {
+          table_id: data?.table_id || table_id,
+          pin_code: newPin,
+          session_id: data?.id || session_id,
+          regenerated: true,
+        },
+      }).catch(auditErr => {
+        console.warn('PIN regenerated audit log error:', auditErr);
+      });
     });
 
     return NextResponse.json({ success: true, pin_code: newPin, session: data });
