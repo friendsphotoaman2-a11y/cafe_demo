@@ -499,8 +499,11 @@ export default function ManagerDashboard() {
         body: JSON.stringify({ ...settings, require_pin: target }),
       });
       const data = await res.json();
-      if (data.success && data.settings) {
+      if (res.ok && data.success && data.settings) {
         setSettings(data.settings);
+      } else {
+        setSettings(prev => ({ ...prev, require_pin: !target }));
+        alert(data.message || 'Failed to update Table PIN mode. Please try again.');
       }
     } catch {
       setSettings(prev => ({ ...prev, require_pin: !target }));
@@ -521,8 +524,11 @@ export default function ManagerDashboard() {
         body: JSON.stringify({ ...settings, table_pin_overrides: updatedOverrides }),
       });
       const data = await res.json();
-      if (data.success && data.settings) {
+      if (res.ok && data.success && data.settings) {
         setSettings(data.settings);
+      } else {
+        setSettings(prev => ({ ...prev, table_pin_overrides: currentOverrides }));
+        alert(data.message || 'Failed to update table PIN override.');
       }
     } catch {
       setSettings(prev => ({ ...prev, table_pin_overrides: currentOverrides }));
@@ -3284,34 +3290,41 @@ export default function ManagerDashboard() {
       </nav>
 
       {/* Table Details & Sessions Drawer Panel */}
-      {selectedTableForPanel && (
-        <TableDetailsPanel
-          table={selectedTableForPanel}
-          session={sessions[selectedTableForPanel.id] || null}
-          orders={
-            sessions[selectedTableForPanel.id]
-              ? allOrders.filter(o => o.session_id === sessions[selectedTableForPanel.id]?.id)
-              : []
-          }
-          waiterCall={
-            waiterCalls.find(
-              c => c.table_id === selectedTableForPanel.id && c.status === 'PENDING'
-            ) || null
-          }
-          isOpen={!!selectedTableForPanel}
-          onClose={() => setSelectedTableForPanel(null)}
-          onGeneratePin={handleGeneratePin}
-          onRegeneratePin={handleRegeneratePin}
-          onCloseSession={handleCloseSession}
-          onResolveWaiterCall={handleResolveWaiterCall}
-          onOpenBilling={(tbl, sess, ords) => {
-            setSelectedTableForPanel(null);
-            setBillingTable({ table: tbl, session: sess, orders: ords });
-          }}
-          onOpenQR={tbl => setQrModalTable(tbl)}
-          onUpdateOrderStatus={handleUpdateOrderStatus}
-        />
-      )}
+      {selectedTableForPanel && (() => {
+        const masterReqPin = settings.require_pin ?? true;
+        const tblOverride = settings.table_pin_overrides?.[selectedTableForPanel.id] || 'DEFAULT';
+        const effectiveReqPin = tblOverride === 'ON' ? true : tblOverride === 'OFF' ? false : masterReqPin;
+
+        return (
+          <TableDetailsPanel
+            table={selectedTableForPanel}
+            session={sessions[selectedTableForPanel.id] || null}
+            orders={
+              sessions[selectedTableForPanel.id]
+                ? allOrders.filter(o => o.session_id === sessions[selectedTableForPanel.id]?.id)
+                : []
+            }
+            waiterCall={
+              waiterCalls.find(
+                c => c.table_id === selectedTableForPanel.id && c.status === 'PENDING'
+              ) || null
+            }
+            isOpen={!!selectedTableForPanel}
+            requirePin={effectiveReqPin}
+            onClose={() => setSelectedTableForPanel(null)}
+            onGeneratePin={handleGeneratePin}
+            onRegeneratePin={handleRegeneratePin}
+            onCloseSession={handleCloseSession}
+            onResolveWaiterCall={handleResolveWaiterCall}
+            onOpenBilling={(tbl, sess, ords) => {
+              setSelectedTableForPanel(null);
+              setBillingTable({ table: tbl, session: sess, orders: ords });
+            }}
+            onOpenQR={tbl => setQrModalTable(tbl)}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+          />
+        );
+      })()}
 
       {/* Cancel Item Confirmation Modal (writes to audit_log) */}
       {cancellingItem && (

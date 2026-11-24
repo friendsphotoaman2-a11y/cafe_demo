@@ -23,6 +23,7 @@ interface Props {
   orders: Order[];
   waiterCall: WaiterCall | null;
   isOpen: boolean;
+  requirePin?: boolean;
   onClose: () => void;
   onGeneratePin: (tableId: string) => Promise<void>;
   onRegeneratePin: (sessionId: string, tableId: string) => Promise<void>;
@@ -42,6 +43,7 @@ export function TableDetailsPanel({
   orders,
   waiterCall,
   isOpen,
+  requirePin = true,
   onClose,
   onGeneratePin,
   onRegeneratePin,
@@ -215,23 +217,34 @@ export function TableDetailsPanel({
           {isActive ? (
             <div className="bg-gradient-to-br from-amber-950/50 via-stone-900 to-stone-900 border border-amber-900/60 rounded-3xl p-5 space-y-4">
               <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
-                    Active 4-Digit Table PIN
-                  </span>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-4xl font-black font-mono text-amber-300 tracking-wider">
-                      {session.pin_code || '••••'}
+                {requirePin && session.pin_code !== '0000' ? (
+                  <div>
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
+                      Active 4-Digit Table PIN
                     </span>
-                    <button
-                      onClick={handleCopyPin}
-                      className="p-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition cursor-pointer"
-                      title="Copy PIN"
-                    >
-                      {copiedPin ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    </button>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-4xl font-black font-mono text-amber-300 tracking-wider">
+                        {session.pin_code || '••••'}
+                      </span>
+                      <button
+                        onClick={handleCopyPin}
+                        className="p-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition cursor-pointer"
+                        title="Copy PIN"
+                      >
+                        {copiedPin ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block">
+                      Direct Access Session (PIN OFF)
+                    </span>
+                    <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-extrabold">
+                      <span>Open Table • No PIN Required</span>
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={() => onOpenQR(table)}
@@ -251,6 +264,28 @@ export function TableDetailsPanel({
                 <span className="font-mono font-bold text-amber-300 bg-amber-950/60 px-2.5 py-0.5 rounded-lg border border-amber-900/40">
                   {liveDuration}
                 </span>
+              </div>
+            </div>
+          ) : !requirePin ? (
+            <div className="bg-emerald-950/20 border border-dashed border-emerald-500/40 rounded-3xl p-6 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                <QrCode className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-emerald-300">Direct Access Mode (PIN OFF)</h3>
+                <p className="text-xs text-stone-300 mt-1 max-w-xs mx-auto leading-relaxed">
+                  PIN is turned OFF for this table. Guests can scan the QR code or tap NFC to open the menu and order directly without a PIN.
+                </p>
+              </div>
+
+              <div className="pt-2 flex justify-center gap-2">
+                <button
+                  onClick={() => onOpenQR(table)}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-emerald-500/20"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>View QR Stand</span>
+                </button>
               </div>
             </div>
           ) : (
@@ -280,24 +315,28 @@ export function TableDetailsPanel({
           {/* Action Buttons */}
           <div className="space-y-2">
             {!isActive ? (
-              <button
-                onClick={() => handleAction(() => onGeneratePin(table.id))}
-                disabled={actionLoading}
-                className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-stone-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer touch-manipulation select-none"
-              >
-                <KeyRound className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
-                <span>{actionLoading ? 'Generating PIN...' : 'Generate PIN'}</span>
-              </button>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
+              requirePin ? (
                 <button
-                  onClick={() => handleAction(() => onRegeneratePin(session.id, table.id))}
+                  onClick={() => handleAction(() => onGeneratePin(table.id))}
                   disabled={actionLoading}
-                  className="py-3 px-3 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center gap-1.5 transition border border-stone-700 cursor-pointer"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-stone-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer touch-manipulation select-none"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${actionLoading ? 'animate-spin' : ''}`} />
-                  <span>Regenerate PIN</span>
+                  <KeyRound className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
+                  <span>{actionLoading ? 'Generating PIN...' : 'Generate PIN'}</span>
                 </button>
+              ) : null
+            ) : (
+              <div className={requirePin ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
+                {requirePin && (
+                  <button
+                    onClick={() => handleAction(() => onRegeneratePin(session.id, table.id))}
+                    disabled={actionLoading}
+                    className="py-3 px-3 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center gap-1.5 transition border border-stone-700 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${actionLoading ? 'animate-spin' : ''}`} />
+                    <span>Regenerate PIN</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setConfirmCloseOpen(true)}
