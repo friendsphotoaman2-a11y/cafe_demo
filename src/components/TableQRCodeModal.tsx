@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { CafeTable } from '@/types/database';
 import { QrCode, Printer, X, Download } from 'lucide-react';
+import { withBasePathUrl } from '@/lib/base-path';
 
 interface Props {
   table: CafeTable | null;
@@ -19,8 +20,13 @@ export function TableQRCodeModal({ table, isOpen, onClose, cafeName }: Props) {
   useEffect(() => {
     if (!table || !isOpen) return;
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-    const url = `${origin}/t/${table.table_code.toLowerCase()}`;
+    const baseUrl =
+      process.env.NEXT_PUBLIC_ORDERING_BASE_URL ||
+      (typeof window !== 'undefined'
+        ? withBasePathUrl(window.location.origin)
+        : 'https://www.thebusinesswork.com/demo/cafe');
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+    const url = `${cleanBaseUrl}/t/${table.table_code.toLowerCase()}`;
     setTableUrl(url);
 
     QRCode.toDataURL(url, {

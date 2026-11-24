@@ -29,14 +29,13 @@ export function TableQRCodesView({ tables, settings }: Props) {
   const [copiedAll, setCopiedAll] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<string>('ALL');
 
-  // Determine application base domain from environment variable or window
-  const appDomain =
+  // Determine application base domain from environment variable or window, ensuring basePath is always included
+  const rawDomain =
     process.env.NEXT_PUBLIC_ORDERING_BASE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
     (typeof window !== 'undefined'
-      ? withBasePathUrl(window.location.origin)
-      : 'https://www.thebusinesswork.com/demo/cafe');
-  const cleanDomain = appDomain.replace(/\/+$/, '');
+      ? window.location.origin
+      : 'https://www.thebusinesswork.com');
+  const cleanDomain = withBasePathUrl(rawDomain).replace(/\/+$/, '');
 
   // Generate high-resolution QR codes for each table
   useEffect(() => {

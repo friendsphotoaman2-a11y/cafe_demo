@@ -29,6 +29,24 @@ const nextConfig: NextConfig = {
         basePath: false,
         permanent: false,
       },
+      {
+        source: "/t/:path*",
+        destination: `${basePath}/t/:path*`,
+        basePath: false,
+        permanent: false,
+      },
+      {
+        source: "/manager/:path*",
+        destination: `${basePath}/manager/:path*`,
+        basePath: false,
+        permanent: false,
+      },
+      {
+        source: "/kitchen/:path*",
+        destination: `${basePath}/kitchen/:path*`,
+        basePath: false,
+        permanent: false,
+      },
     ];
   },
   env: {
