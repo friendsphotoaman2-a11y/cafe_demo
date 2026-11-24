@@ -129,8 +129,8 @@ export function normalizePrivateKey(rawKey: string): string {
   key = key.replace(/\\+n/g, '\n');
 
   // Reconstruct standard 64-char-line PEM format when headers exist
-  const headerMatch = key.match(/-----BEGIN [A-Z0-9\s]+PRIVATE KEY-----/);
-  const footerMatch = key.match(/-----END [A-Z0-9\s]+PRIVATE KEY-----/);
+  const headerMatch = key.match(/-----BEGIN [A-Z0-9\s]*PRIVATE KEY-----/);
+  const footerMatch = key.match(/-----END [A-Z0-9\s]*PRIVATE KEY-----/);
 
   if (headerMatch && footerMatch) {
     const header = headerMatch[0];
