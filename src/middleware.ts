@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { withBasePath } from '@/lib/base-path';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -113,7 +114,13 @@ export async function middleware(request: NextRequest) {
 
     // If no authenticated user, redirect to manager login
     if (error || !user) {
-      const loginUrl = new URL('/manager/login', request.url);
+      const loginUrl = new URL(withBasePath('/manager/login'), request.url);
+      const forwardedHost = request.headers.get('x-forwarded-host');
+      const forwardedProto = request.headers.get('x-forwarded-proto') || 'https';
+      if (forwardedHost) {
+        loginUrl.host = forwardedHost;
+        loginUrl.protocol = forwardedProto;
+      }
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
