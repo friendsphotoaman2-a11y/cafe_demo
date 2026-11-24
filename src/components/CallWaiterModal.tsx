@@ -31,16 +31,26 @@ export function CallWaiterModal({
   if (!isOpen) return null;
 
   const quickChips = [
-    { id: 'Water', en: 'Water', hi: 'पानी (Water)' },
-    { id: 'Bill', en: 'Bill', hi: 'बिल (Bill)' },
-    { id: 'Help', en: 'Help', hi: 'मदद (Help)' },
+    { id: 'Water', en: 'Water', hi: 'पानी' },
+    { id: 'Bill', en: 'Bill', hi: 'बिल' },
+    { id: 'Help', en: 'Cutlery / Napkins', hi: 'चम्मच / नैपकिन' },
   ];
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const triggerHaptic = (ms = 40) => {
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(ms);
+      } catch {}
+    }
+  };
+
+  async function handleCallWaiter(customNote?: string) {
+    triggerHaptic(50);
     setLoading(true);
     setErrorMsg('');
     setIsCooldown(false);
+
+    const finalNote = customNote !== undefined ? customNote : note;
 
     try {
       const res = await fetch(apiUrl('/api/table/call-waiter'), {
@@ -49,7 +59,7 @@ export function CallWaiterModal({
         body: JSON.stringify({
           session_id: sessionId,
           session_token: sessionToken,
-          note: note.trim().slice(0, 100) || undefined,
+          note: finalNote.trim().slice(0, 100) || undefined,
         }),
       });
 
@@ -73,7 +83,7 @@ export function CallWaiterModal({
       } else {
         setSuccess(true);
         setSuccessMessage(
-          language === 'hi' ? 'वेटर आपकी टेबल की तरफ आ रहा है' : 'Waiter is on the way'
+          language === 'hi' ? 'वेटर आपकी टेबल की तरफ आ रहा है!' : 'Waiter has been alerted!'
         );
         setTimeout(() => {
           setSuccess(false);
@@ -94,6 +104,7 @@ export function CallWaiterModal({
   }
 
   function handleSelectChip(chipText: string) {
+    triggerHaptic(25);
     if (note === chipText) {
       setNote('');
     } else {
@@ -103,103 +114,77 @@ export function CallWaiterModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-fade-in">
-      <div className="w-full max-w-sm rounded-t-3xl sm:rounded-3xl bg-white p-5 sm:p-6 shadow-2xl border border-amber-100 flex flex-col overflow-hidden animate-slide-up">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
-              <Bell className="w-4 h-4 animate-bounce" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-gray-900">
-                {language === 'hi' ? 'वेटर को बुलाएं' : 'Call Waiter'}
-              </h3>
-              <p className="text-[11px] text-amber-700 font-semibold">{tableNumber}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-fade-in select-none">
+      <div className="w-full max-w-sm rounded-[32px] bg-white p-6 shadow-2xl border border-amber-100 flex flex-col items-center text-center relative animate-scale-up">
+        {/* Close Button Top Right */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-90 transition cursor-pointer"
+          title="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Table Badge & Title */}
+        <div className="mb-2">
+          <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold inline-block mb-1 border border-amber-200/80">
+            {tableNumber}
+          </span>
+          <h3 className="font-black text-xl text-gray-900 tracking-tight">
+            {language === 'hi' ? 'वेटर को बुलाएं' : 'Call Server'}
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {language === 'hi'
+              ? 'तुरंत अलर्ट भेजने के लिए नीचे बटन दबाएं'
+              : 'Press the bell to instantly alert your server'}
+          </p>
         </div>
 
         {/* Success View */}
         {success ? (
-          <div className="py-8 text-center flex flex-col items-center animate-fade-in">
-            <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-              <CheckCircle2 className="w-8 h-8" />
+          <div className="py-6 text-center flex flex-col items-center animate-fade-in">
+            <div className="w-20 h-20 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 shadow-inner">
+              <CheckCircle2 className="w-12 h-12" />
             </div>
-            <h4 className="font-black text-base text-gray-900">{successMessage}</h4>
-            <p className="text-xs text-gray-500 mt-1">
+            <h4 className="font-black text-lg text-gray-900">{successMessage}</h4>
+            <p className="text-xs text-gray-500 mt-1 max-w-[240px]">
               {language === 'hi'
-                ? 'स्टाफ को आपकी टेबल का संदेश मिल गया है।'
-                : 'Staff has received your call and is approaching your table.'}
+                ? 'स्टाफ को आपकी टेबल का संदेश मिल गया है और वे पहुंच रहे हैं।'
+                : 'Staff has received your notification and is approaching your table.'}
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            {/* Quick Chips: Water, Bill, Help */}
-            <div>
-              <span className="text-[11px] text-gray-400 font-bold uppercase tracking-wider block mb-2">
-                {language === 'hi' ? 'त्वरित विकल्प' : 'Quick Options'}
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {quickChips.map(chip => {
-                  const label = language === 'hi' ? chip.hi : chip.en;
-                  const isSelected = note === chip.en || note === chip.hi;
-                  return (
-                    <button
-                      key={chip.id}
-                      type="button"
-                      onClick={() => handleSelectChip(language === 'hi' ? chip.hi : chip.en)}
-                      className={`text-xs px-3.5 py-1.5 rounded-full font-bold transition-all shadow-2xs cursor-pointer ${
-                        isSelected
-                          ? 'bg-amber-600 text-white shadow-xs scale-105'
-                          : 'bg-amber-50/80 text-amber-900 border border-amber-200 hover:bg-amber-100'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+          <div className="w-full flex flex-col items-center">
+            {/* BIG CIRCULAR RING BUTTON */}
+            <div className="relative flex items-center justify-center my-5">
+              {/* Pulsing ambient rings */}
+              <span className="absolute w-36 h-36 rounded-full bg-amber-400/25 animate-ping pointer-events-none" />
+              <span className="absolute w-40 h-40 rounded-full border-2 border-amber-300/40 pointer-events-none" />
 
-            {/* Optional Note Field (Max 100 characters) */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs font-semibold text-gray-700">
-                  {language === 'hi' ? 'वैकल्पिक संदेश (अधिकतम 100 शब्द)' : 'Optional Note (max 100 chars)'}
-                </label>
-                <span className="text-[10px] text-gray-400 font-mono">
-                  {note.length}/100
-                </span>
-              </div>
-              <textarea
-                value={note}
-                maxLength={100}
-                onChange={e => {
-                  setNote(e.target.value.slice(0, 100));
-                  setErrorMsg('');
-                }}
-                placeholder={
-                  language === 'hi'
-                    ? 'जैसे: पानी के दो ग्लास, चम्मच, या बिल...'
-                    : 'e.g. Extra glasses of water, cutlery, or bill...'
-                }
-                rows={2}
-                className="w-full rounded-2xl border border-gray-200 p-3 text-xs text-gray-900 bg-gray-50 focus:bg-white focus:border-amber-500 focus:outline-hidden shadow-2xs resize-none"
-              />
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleCallWaiter()}
+                className="relative z-10 w-32 h-32 rounded-full bg-linear-to-tr from-amber-500 via-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-90 text-white shadow-xl shadow-amber-500/40 border-4 border-white flex flex-col items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer disabled:opacity-60"
+              >
+                {loading ? (
+                  <Loader2 className="w-10 h-10 animate-spin text-white" />
+                ) : (
+                  <>
+                    <Bell className="w-10 h-10 animate-bounce text-white drop-shadow-sm" />
+                    <span className="font-black text-xs uppercase tracking-wider text-white">
+                      {language === 'hi' ? 'दबाएं' : 'Press'}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Error / Cooldown Alert */}
             {errorMsg && (
               <div
-                className={`p-3 rounded-xl text-xs font-semibold flex items-start gap-2 ${
+                className={`w-full p-2.5 mb-3 rounded-xl text-xs font-semibold flex items-start gap-2 text-left ${
                   isCooldown
                     ? 'bg-orange-50 border border-orange-200 text-orange-800'
                     : 'bg-red-50 border border-red-200 text-red-600'
@@ -214,31 +199,33 @@ export function CallWaiterModal({
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 px-4 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition cursor-pointer"
-              >
-                {language === 'hi' ? 'रद्द करें' : 'Cancel'}
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 py-3 px-4 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-md shadow-amber-600/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Bell className="w-3.5 h-3.5" />
-                    <span>{language === 'hi' ? 'वेटर बुलाएं' : 'Call Waiter'}</span>
-                  </>
-                )}
-              </button>
+            {/* Optional Quick Chips */}
+            <div className="w-full pt-2 border-t border-gray-100">
+              <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block mb-2">
+                {language === 'hi' ? 'त्वरित कारण (वैकल्पिक)' : 'Optional Note'}
+              </span>
+              <div className="flex justify-center gap-1.5 flex-wrap">
+                {quickChips.map(chip => {
+                  const label = language === 'hi' ? chip.hi : chip.en;
+                  const isSelected = note === chip.en || note === chip.hi;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => handleSelectChip(label)}
+                      className={`text-xs px-3 py-1.5 rounded-full font-bold transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-600 text-white shadow-xs scale-105'
+                          : 'bg-gray-100 text-gray-700 hover:bg-amber-50 hover:text-amber-900 border border-gray-200/60'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </form>
+          </div>
         )}
       </div>
     </div>

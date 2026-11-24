@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   Sparkles,
   Delete,
+  Receipt,
 } from 'lucide-react';
 
 import { useTranslation } from '@/lib/i18n';
@@ -74,6 +75,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   const [isCallWaiterOpen, setIsCallWaiterOpen] = useState(false);
   const [orderingInProgress, setOrderingInProgress] = useState(false);
   const [orderSuccessMessage, setOrderSuccessMessage] = useState<string | null>(null);
+  const [taxEnabled, setTaxEnabled] = useState(true);
+  const [gstRatePercent, setGstRatePercent] = useState(5.0);
 
   // Initialize Anonymous Auth, device_id, and check for existing open table session
   useEffect(() => {
@@ -264,7 +267,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
   }
 
-  // Fetch Menu and Categories
+  // Fetch Menu, Categories, and Settings
   const refreshMenu = React.useCallback(async () => {
     const supabase = createClient();
     const { data: catData } = await supabase
@@ -278,6 +281,24 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       .select('*')
       .order('name_en', { ascending: true });
     if (itemsData) setMenuItems(itemsData);
+
+    const { data: settingsData } = await supabase
+      .from('manager_settings')
+      .select('gst_rate_percent, cafe_tagline')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (settingsData) {
+      setGstRatePercent(Number(settingsData.gst_rate_percent) || 5.0);
+      try {
+        if (settingsData.cafe_tagline?.trim().startsWith('{')) {
+          const meta = JSON.parse(settingsData.cafe_tagline);
+          if (meta.tax_enabled !== undefined) {
+            setTaxEnabled(Boolean(meta.tax_enabled));
+          }
+        }
+      } catch {}
+    }
   }, []);
 
   // Prefetch menu items and categories immediately on page load in background
@@ -892,53 +913,75 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   return (
     <div className="min-h-screen bg-gray-50 pb-28 text-gray-900 font-sans">
       {/* Top Sticky Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200/80 px-4 py-3 shadow-xs">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-amber-500/20">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200/80 px-4 py-2.5 sm:py-3 shadow-xs">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
+          {/* Left: Logo + Cafe Name + Table Badge */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-linear-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center font-black text-base shadow-sm shrink-0">
               ☕
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base text-gray-900 leading-tight">
-                  Brew &amp; Bites
-                </h1>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="flex items-center gap-1.5 flex-nowrap">
+                <span className="font-black text-sm sm:text-base text-gray-900 truncate tracking-tight">
+                  {language === 'hi' ? 'ब्रू एंड बाइट्स' : 'Brew & Bites'}
+                </span>
+                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200/80 shrink-0">
                   {tableNumber}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-500">Live ordering active</p>
+              <span className="text-[10px] sm:text-[11px] text-emerald-600 font-bold flex items-center gap-1 leading-none mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span>{language === 'hi' ? 'लाइव टेबल ऑर्डरिंग' : 'Live Table Ordering'}</span>
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Language switch */}
+          {/* Right: Language switch + Waiter button */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
-              onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+              type="button"
+              onClick={() => {
+                triggerHaptic(20);
+                setLanguage(language === 'en' ? 'hi' : 'en');
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-bold text-gray-700 hover:bg-gray-100 active:scale-95 transition cursor-pointer"
               title="Toggle Hindi / English"
             >
               <Languages className="w-3.5 h-3.5 text-amber-600" />
               <span>{language === 'en' ? 'हिन्दी' : 'English'}</span>
             </button>
 
-            {/* Call Waiter Button */}
             <button
+              type="button"
               onClick={() => setIsCallWaiterOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-xs transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold shadow-xs active:scale-95 transition cursor-pointer"
             >
-              <Bell className="w-3.5 h-3.5" />
-              <span>{t('common.callWaiter', 'Call Waiter')}</span>
+              <Bell className="w-3.5 h-3.5 animate-bounce" />
+              <span className="hidden xs:inline">{t('common.callWaiter', 'Call Waiter')}</span>
+              <span className="xs:hidden">{language === 'hi' ? 'वेटर' : 'Waiter'}</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Success Notification Banner */}
+      {/* Success Notification Banner - Smooth Toast (No shaking/bouncing) */}
       {orderSuccessMessage && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 bg-emerald-600 text-white px-5 py-2.5 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 animate-bounce">
-          <Check className="w-4 h-4" />
-          <span>{orderSuccessMessage}</span>
+        <div className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm bg-linear-to-r from-emerald-600 to-emerald-700 text-white px-4 py-3 rounded-2xl shadow-xl shadow-emerald-950/20 text-xs font-bold flex items-center justify-between gap-3 border border-emerald-400/40 animate-fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4 text-white" />
+            </div>
+            <span className="leading-tight text-white/95">
+              {orderSuccessMessage}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOrderSuccessMessage(null)}
+            className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white shrink-0 cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -1545,28 +1588,57 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 </div>
               ))}
 
-              {/* Total Summary */}
-              <div className="pt-2 border-t border-gray-100">
-                <div className="flex justify-between text-sm font-bold text-gray-900">
-                  <span>{language === 'hi' ? 'इस राउंड का कुल' : 'Round Total'}</span>
-                  <span className="text-amber-700 font-extrabold text-base">₹{cartTotal}</span>
+              {/* Total & Tax Breakdown */}
+              <div className="pt-3 border-t border-gray-100 space-y-2">
+                <div className="flex justify-between text-xs text-gray-500 font-medium">
+                  <span>{language === 'hi' ? 'आइटम कुल' : 'Items Subtotal'}</span>
+                  <span>₹{cartTotal}</span>
                 </div>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  {language === 'hi'
-                    ? '* सभी मानक कर (GST) शामिल हैं।'
-                    : '* Prices are inclusive of all standard food taxes.'}
+
+                {taxEnabled && (
+                  <div className="flex justify-between text-xs text-gray-600 font-semibold">
+                    <span>GST ({gstRatePercent}%):</span>
+                    <span className="text-emerald-700 font-bold">
+                      +₹{(Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-base font-black text-gray-900 pt-1.5 border-t border-dashed border-gray-200">
+                  <span>{language === 'hi' ? 'इस राउंड का कुल' : 'Round Total'}</span>
+                  <span className="text-amber-700 font-black text-lg">
+                    ₹{taxEnabled
+                      ? (cartTotal + Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2)
+                      : cartTotal}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-gray-400 font-medium">
+                  {taxEnabled
+                    ? (language === 'hi'
+                        ? `* कीमतों पर ${gstRatePercent}% GST लागू है।`
+                        : `* Standard ${gstRatePercent}% GST is applicable.`)
+                    : (language === 'hi'
+                        ? '* कोई अतिरिक्त कर नहीं।'
+                        : '* Prices are net (No extra tax).')}
                 </p>
               </div>
 
-              {/* Counter Billing Notice */}
-              <div className="bg-amber-50 rounded-xl p-3 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
-                <span className="text-base">ℹ️</span>
-                <span>
-                  <strong>{language === 'hi' ? 'काउंटर बिलिंग:' : 'Counter Billing:'}</strong>{' '}
-                  {language === 'hi'
-                    ? 'बिल केवल काउंटर पर दिया जाता है। आपके फोन से कोई भुगतान नहीं लिया जाता।'
-                    : 'You will receive a consolidated bill at the counter when you finish dining. No payment is taken through your phone.'}
-                </span>
+              {/* Counter Billing Notice - Professional Design */}
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-950 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                  <Receipt className="w-4 h-4 text-amber-700" />
+                </div>
+                <div className="leading-snug">
+                  <p className="font-black text-xs text-amber-950">
+                    {language === 'hi' ? 'काउंटर बिलिंग' : 'Pay at Counter'}
+                  </p>
+                  <p className="text-[11px] text-amber-900/80 font-medium mt-0.5">
+                    {language === 'hi'
+                      ? 'ऑर्डर सीधे किचन भेजा जाएगा। बिल डाइनिंग पूरी होने पर काउंटर पर देना है।'
+                      : 'Order goes straight to kitchen. Consolidated bill is settled at the counter when you finish dining.'}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1583,7 +1655,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 type="button"
                 disabled={orderingInProgress || cart.length === 0}
                 onClick={handlePlaceOrder}
-                className="flex-1 py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-98 text-white font-bold text-sm shadow-md transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-98 text-white font-bold text-sm shadow-md transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 {orderingInProgress ? (
                   <span>
@@ -1594,8 +1666,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                 ) : (
                   <span>
                     {language === 'hi'
-                      ? `ऑर्डर भेजें (₹${cartTotal})`
-                      : `Place Order (₹${cartTotal})`}
+                      ? `ऑर्डर भेजें (₹${taxEnabled ? (cartTotal + Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2) : cartTotal})`
+                      : `Place Order (₹${taxEnabled ? (cartTotal + Math.round(((cartTotal * gstRatePercent) / 100) * 100) / 100).toFixed(2) : cartTotal})`}
                   </span>
                 )}
               </button>
@@ -1613,19 +1685,45 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         tableNumber={tableNumber}
       />
 
-      {/* Floating Call Waiter Button - visible ONLY while table session is open */}
+      {/* Floating Action Buttons Dock (Live Orders Pill + Call Waiter) */}
       {isPinVerified && !isSessionEnded && (
-        <button
-          type="button"
-          onClick={() => setIsCallWaiterOpen(true)}
-          className={`fixed right-4 z-30 flex items-center gap-2 py-2.5 px-4 rounded-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-lg shadow-amber-500/30 border border-white/20 active:scale-95 transition-all duration-300 cursor-pointer ${
-            cart.length > 0 ? 'bottom-22' : 'bottom-5'
-          }`}
-          title="Call Waiter"
-        >
-          <Bell className="w-4 h-4 animate-bounce" />
-          <span>{language === 'hi' ? 'वेटर बुलाएं' : 'Call Waiter'}</span>
-        </button>
+        <div className={`fixed z-30 flex items-center gap-2.5 transition-all duration-300 ${
+          cart.length > 0 ? 'bottom-22 right-4' : 'bottom-5 right-4'
+        }`}>
+          {tableOrders.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic(30);
+                setIsLiveOrdersOpen(true);
+              }}
+              className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-stone-900/95 hover:bg-stone-900 text-amber-400 font-extrabold text-xs shadow-xl shadow-stone-950/20 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
+              title="View Table Live Orders"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
+              <span>
+                {language === 'hi' ? `ऑर्डर देखें (${tableOrders.length})` : `Live Orders (${tableOrders.length})`}
+              </span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic(30);
+              setIsCallWaiterOpen(true);
+            }}
+            className="flex items-center gap-2 py-2.5 px-4 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs shadow-xl shadow-amber-500/30 border border-white/20 active:scale-95 transition-all cursor-pointer"
+            title="Call Waiter"
+          >
+            <Bell className="w-3.5 h-3.5 animate-bounce" />
+            <span>{language === 'hi' ? 'वेटर बुलाएं' : 'Call Waiter'}</span>
+          </button>
+        </div>
       )}
 
       {/* Call Waiter Sheet Modal */}
