@@ -8,7 +8,7 @@ export const BASE_PATH = (() => {
   const raw =
     process.env.NEXT_PUBLIC_BASE_PATH ||
     process.env.CAFE_DEMO_BASE_PATH ||
-    "";
+    "/demo/cafe";
   const trimmed = raw.trim();
   if (!trimmed || trimmed === "/") return "";
   // Ensure leading slash and strip trailing slash
@@ -96,4 +96,3 @@ export function withBasePathUrl(urlOrOrigin: string): string {
 export function getCookiePath(): string {
   return BASE_PATH || "/";
 }
-

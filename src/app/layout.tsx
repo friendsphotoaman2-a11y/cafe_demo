@@ -1,30 +1,35 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
-import "./globals.css";
+import type { Metadata, Viewport } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
+import './globals.css';
 
 const geistSans = Geist({
-  variable: "--font-sans",
-  subsets: ["latin"],
+  variable: '--font-geist-sans',
+  subsets: ['latin'],
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
+  variable: '--font-geist-mono',
+  subsets: ['latin'],
 });
 
-const playfair = Playfair_Display({
-  variable: "--font-serif",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-export const metadata: Metadata = {
-  title: "Brew & Bean Café — Artisan Coffee & Fresh Kitchen | Indiranagar",
-  description:
-    "Specialty single-origin Chikmagalur coffees, 36-hr sourdough sandwiches, and contactless table QR ordering platform.",
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  themeColor: '#d97706',
 };
 
-import { ToastProvider } from "@/components/ui/Toast";
+export const metadata: Metadata = {
+  title: 'Brew & Bites | Smart Table Ordering & Billing',
+  description: 'Smart table ordering, kitchen display, and counter billing system.',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Brew & Bites',
+  },
+};
 
 export default function RootLayout({
   children,
@@ -32,11 +37,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="h-full antialiased">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased bg-[#FAF7F2] text-zinc-900`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-full flex flex-col font-sans select-none sm:select-auto`}
       >
-        <ToastProvider>{children}</ToastProvider>
+        {children}
       </body>
     </html>
   );

@@ -1,0 +1,66 @@
+{
+  "common": {
+    "cafeName": "Brew & Bites Cafe",
+    "welcome": "Welcome",
+    "table": "Table",
+    "callWaiter": "Call Waiter",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close",
+    "search": "Search items, coffee, bites...",
+    "vegOnly": "Veg Only",
+    "all": "All Items",
+    "add": "Add",
+    "soldOut": "Sold Out Today",
+    "unavailable": "Unavailable",
+    "breakfastOnly": "Breakfast only (07:00 AM - 11:30 AM)",
+    "lunchOnly": "Lunch only (12:00 PM - 04:00 PM)",
+    "itemNotes": "Special instructions (e.g. less spicy)..."
+  },
+  "pinScreen": {
+    "title": "Welcome to",
+    "subtitle": "Enter the 4-digit PIN provided by your server to view the menu and start ordering.",
+    "openMenu": "Open Menu",
+    "verifying": "Verifying PIN...",
+    "invalidPin": "Invalid PIN. Please talk to the manager and get your PIN again.",
+    "tableLocked": "Table Locked",
+    "lockedMessage": "5 consecutive wrong attempts recorded. For security, this table is locked for 5 minutes.",
+    "countdown": "Lock countdown",
+    "askManager": "Wrong PIN or wrong table? Ask the cafe manager for the 4-digit code."
+  },
+  "cart": {
+    "title": "Your Cart",
+    "itemsInCart": "in cart",
+    "reviewOrder": "Review & Order",
+    "addMore": "Add More Items",
+    "confirmOrder": "Confirm Order",
+    "sending": "Sending to Kitchen...",
+    "roundTotal": "Round Total",
+    "counterBillingNotice": "Billing is done only at the counter. No payment is taken through your phone."
+  },
+  "tableActivity": {
+    "title": "Table Activity",
+    "sharedView": "Shared Live View",
+    "yourOrder": "Your Order",
+    "thisPhone": "This Phone",
+    "noOrdersYet": "You haven't ordered any items from this phone yet.",
+    "othersAtTable": "Others at your table",
+    "received": "Received",
+    "preparing": "Preparing",
+    "ready": "Ready",
+    "served": "Served",
+    "tableRunningTotal": "Table Running Total"
+  },
+  "callWaiter": {
+    "title": "Call Waiter",
+    "optionalNote": "Optional note for staff:",
+    "placeholder": "e.g. Bring extra water, tissues...",
+    "quickOptions": "Quick options:",
+    "water": "Need water",
+    "clean": "Clean the table",
+    "cutlery": "Extra cutlery",
+    "manager": "Call manager",
+    "alertStaff": "Alert Staff",
+    "staffAlerted": "Staff has been alerted! Someone will be at your table shortly."
+  }
+}

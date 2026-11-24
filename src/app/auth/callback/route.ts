@@ -1,56 +1,85 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { withBasePath } from "@/lib/base-path";
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { withBasePath } from '@/lib/base-path';
 
-export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const next = searchParams.get("next") || "/controlroom";
-
-  // Handle reverse proxy / Vercel forwarded host correctly
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
-  const baseUrl = forwardedHost
-    ? `${forwardedProto}://${forwardedHost}`
-    : origin;
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get('code');
+  const next = searchParams.get('next') ?? '/manager';
 
   if (code) {
-    const cookieStore = await cookies();
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey =
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = await createClient();
+    const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    const redirectUrl = `${baseUrl}${withBasePath(next)}`;
-    const response = NextResponse.redirect(redirectUrl);
+    if (!error && session?.user) {
+      const email = session.user.email?.toLowerCase().trim();
 
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-              response.cookies.set(name, value, options);
-            });
-          } catch {
-            // Ignored
+      // 1. Check is_manager() RPC
+      let isAllowed = false;
+      try {
+        const { data: isMgr } = await supabase.rpc('is_manager');
+        if (isMgr === true) {
+          isAllowed = true;
+        }
+      } catch (err) {
+        console.error('Error invoking is_manager():', err);
+      }
+
+      // 2. Fallback check against staff_emails / allowed_managers table
+      if (!isAllowed && email) {
+        try {
+          const admin = createAdminClient();
+          // Check staff_emails
+          const { data: staffRow } = await admin
+            .from('staff_emails')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (staffRow) {
+            isAllowed = true;
           }
-        },
-      },
-    });
+        } catch {
+          // Table might be named allowed_managers
+        }
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return response;
+        if (!isAllowed) {
+          try {
+            const admin = createAdminClient();
+            const { data: mgrRow } = await admin
+              .from('allowed_managers')
+              .select('email')
+              .eq('email', email)
+              .maybeSingle();
+
+            if (mgrRow) {
+              isAllowed = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // 3. Environment allowlist check
+        const envEmails = (process.env.MANAGER_EMAILS || 'friendsphotoaman2@gmail.com')
+          .split(',')
+          .map(e => e.trim().toLowerCase());
+        if (envEmails.includes(email)) {
+          isAllowed = true;
+        }
+      }
+
+      // If user does not have manager authorization
+      if (!isAllowed) {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(new URL(withBasePath('/manager/login?error=not_allowed'), request.url));
+      }
+
+      const redirectPath = next.startsWith('/') ? next : `/${next}`;
+      return NextResponse.redirect(new URL(withBasePath(redirectPath), request.url));
     }
   }
 
-  // Fallback to control room login if oauth exchange fails
-  return NextResponse.redirect(`${baseUrl}${withBasePath("/controlroom/login?error=oauth_failed")}`);
+  return NextResponse.redirect(new URL(withBasePath('/manager/login?error=auth_failed'), request.url));
 }
-
-

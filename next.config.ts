@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
-// Optional Multi-Zone / Base Path configuration
+// Multi-Zone / Base Path configuration
 const rawBasePath =
-  process.env.CAFE_DEMO_BASE_PATH || process.env.NEXT_PUBLIC_BASE_PATH;
+  process.env.CAFE_DEMO_BASE_PATH || process.env.NEXT_PUBLIC_BASE_PATH || "/demo/cafe";
 
 const basePath =
   rawBasePath && rawBasePath.trim() && rawBasePath.trim() !== "/"
@@ -28,7 +28,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "images.unsplash.com",
+        hostname: "**",
       },
     ],
   },

@@ -23,11 +23,6 @@
 # misc
 .DS_Store
 *.pem
-*.key
-client_secret*.json
-credentials*.json
-service-account*.json
-*.secret
 
 # debug
 npm-debug.log*
@@ -35,11 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# backups and data exports
-scripts/*.json
-*.backup
-*.dump
-scripts/backup-data.json
+# env files
 .env*
 !.env.example
 
