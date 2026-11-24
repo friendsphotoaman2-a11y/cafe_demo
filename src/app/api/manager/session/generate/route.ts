@@ -18,62 +18,39 @@ export async function POST(req: NextRequest) {
     }
 
     const supabaseAdmin = createAdminClient();
-    let sessionResult: Record<string, unknown> | null = null;
 
-    // 1. Try generate_table_pin RPC
-    try {
-      const { data: rpcPin, error: rpcErr } = await supabaseAdmin.rpc('generate_table_pin', {
-        p_table_id: table_id,
-      });
-      if (!rpcErr && rpcPin) {
-        sessionResult = rpcPin as Record<string, unknown>;
-      }
-    } catch {
-      // Continue to generate_table_session
+    // Call generate_table_session RPC directly for sub-millisecond generation
+    const { data, error } = await supabaseAdmin.rpc('generate_table_session', {
+      p_table_id: table_id,
+    });
+
+    if (error) {
+      console.error('Error generating table session:', error);
+      return NextResponse.json(
+        { success: false, message: error.message || 'Could not generate table session' },
+        { status: 500 }
+      );
     }
 
-    if (!sessionResult) {
-      // 2. Try generate_table_session RPC
-      const { data, error } = await supabaseAdmin.rpc('generate_table_session', {
-        p_table_id: table_id,
-      });
+    const sessionResult = data as Record<string, unknown>;
+    const tableNum = (sessionResult?.table_number as string) || `Table (${table_id})`;
+    const pinCode = (sessionResult?.pin_code || sessionResult?.pin || '') as string;
 
-      if (error) {
-        console.error('Error generating table session:', error);
-        return NextResponse.json(
-          { success: false, message: error.message || 'Could not generate table session' },
-          { status: 500 }
-        );
-      }
-      sessionResult = data as Record<string, unknown>;
-    }
-
-    // Log to Audit Log
-    try {
-      const { data: tbl } = await supabaseAdmin
-        .from('cafe_tables')
-        .select('table_number')
-        .eq('id', table_id)
-        .maybeSingle();
-
-      const tableNum = tbl?.table_number || `Table (${table_id})`;
-      const pinCode = (sessionResult?.pin_code || sessionResult?.pin || '') as string;
-
-      await recordAuditLog({
-        action: 'PIN_GENERATED',
-        entity_type: 'table_sessions',
-        entity_id: (sessionResult?.id as string) || table_id,
-        title: `PIN generated for ${tableNum} (PIN: ${pinCode})`,
-        details: {
-          table_id,
-          table_number: tableNum,
-          pin_code: pinCode,
-          session_id: sessionResult?.id,
-        },
-      });
-    } catch (auditErr) {
-      console.warn('PIN_GENERATED audit log error:', auditErr);
-    }
+    // Asynchronously log to Audit Log in background without blocking response
+    recordAuditLog({
+      action: 'PIN_GENERATED',
+      entity_type: 'table_sessions',
+      entity_id: (sessionResult?.session_id as string) || (sessionResult?.id as string) || table_id,
+      title: `PIN generated for ${tableNum} (PIN: ${pinCode})`,
+      details: {
+        table_id,
+        table_number: tableNum,
+        pin_code: pinCode,
+        session_id: sessionResult?.session_id || sessionResult?.id,
+      },
+    }).catch(auditErr => {
+      console.warn('PIN_GENERATED background audit log error:', auditErr);
+    });
 
     return NextResponse.json({ success: true, session: sessionResult });
   } catch (err: unknown) {

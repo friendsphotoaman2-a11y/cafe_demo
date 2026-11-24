@@ -280,10 +280,14 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     if (itemsData) setMenuItems(itemsData);
   }, []);
 
+  // Prefetch menu items and categories immediately on page load in background
+  // so the menu renders with 0ms delay the moment PIN is verified
+  useEffect(() => {
+    refreshMenu();
+  }, [refreshMenu]);
+
   useEffect(() => {
     if (!isPinVerified) return;
-
-    refreshMenu();
 
     const supabase = createClient();
 
@@ -311,7 +315,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isPinVerified, refreshMenu]);
+  }, [isPinVerified]);
 
   // Fetch and Subscribe to Table Shared Orders
   useEffect(() => {

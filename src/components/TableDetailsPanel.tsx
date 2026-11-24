@@ -283,9 +283,9 @@ export function TableDetailsPanel({
               <button
                 onClick={() => handleAction(() => onGeneratePin(table.id))}
                 disabled={actionLoading}
-                className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer"
+                className="w-full py-3.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-stone-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer touch-manipulation select-none"
               >
-                <KeyRound className="w-4 h-4" />
+                <KeyRound className={`w-4 h-4 ${actionLoading ? 'animate-spin' : ''}`} />
                 <span>{actionLoading ? 'Generating PIN...' : 'Generate PIN'}</span>
               </button>
             ) : (

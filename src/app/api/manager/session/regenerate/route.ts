@@ -60,35 +60,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Log to Audit Log
-    try {
-      const tid = data?.table_id || table_id;
-      let tableNum = `Table ${tid}`;
-      if (tid) {
-        const { data: tbl } = await supabaseAdmin
-          .from('cafe_tables')
-          .select('table_number')
-          .eq('id', tid)
-          .maybeSingle();
-        if (tbl?.table_number) tableNum = tbl.table_number;
-      }
-
-      await recordAuditLog({
-        action: 'PIN_GENERATED',
-        entity_type: 'table_sessions',
-        entity_id: data?.id || session_id || tid,
-        title: `PIN regenerated for ${tableNum} (New PIN: ${newPin})`,
-        details: {
-          table_id: tid,
-          table_number: tableNum,
-          pin_code: newPin,
-          session_id: data?.id || session_id,
-          regenerated: true,
-        },
-      });
-    } catch (auditErr) {
+    // Fire audit log asynchronously in background (do not block client response)
+    recordAuditLog({
+      action: 'PIN_GENERATED',
+      entity_type: 'table_sessions',
+      entity_id: data?.id || session_id || table_id,
+      title: `PIN regenerated (New PIN: ${newPin})`,
+      details: {
+        table_id: data?.table_id || table_id,
+        pin_code: newPin,
+        session_id: data?.id || session_id,
+        regenerated: true,
+      },
+    }).catch(auditErr => {
       console.warn('PIN regenerated audit log error:', auditErr);
-    }
+    });
 
     return NextResponse.json({ success: true, pin_code: newPin, session: data });
   } catch (err: unknown) {

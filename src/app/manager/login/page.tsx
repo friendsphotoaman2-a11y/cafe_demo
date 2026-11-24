@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ShieldCheck, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiUrl, withBasePath, getCookiePath } from '@/lib/base-path';
+import { apiUrl, withBasePath } from '@/lib/base-path';
 
 function ManagerLoginForm() {
   const router = useRouter();

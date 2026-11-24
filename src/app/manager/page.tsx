@@ -397,11 +397,12 @@ export default function ManagerDashboard() {
       });
       const data = await res.json();
       if (data.success && data.session) {
+        // Instantly display PIN in UI without waiting for background queries
         setSessions(prev => ({
           ...prev,
           [tableId]: data.session as TableSession,
         }));
-        await loadAllData();
+        loadAllData().catch(() => {});
       } else {
         alert(data.message || 'Could not generate session');
       }
@@ -419,6 +420,7 @@ export default function ManagerDashboard() {
       });
       const data = await res.json();
       if (data.success && data.pin_code) {
+        // Instantly update PIN in UI without waiting for background queries
         setSessions(prev => {
           if (!prev[tableId]) return prev;
           return {
@@ -429,7 +431,7 @@ export default function ManagerDashboard() {
             },
           };
         });
-        await loadAllData();
+        loadAllData().catch(() => {});
       } else {
         alert(data.message || 'Could not regenerate PIN');
       }

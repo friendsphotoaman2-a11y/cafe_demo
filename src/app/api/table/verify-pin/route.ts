@@ -19,41 +19,24 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 1. Try verify_table_pin RPC
-    let rpcData: Record<string, unknown> | null = null;
-    let rpcError: unknown = null;
-
+    // Call verify_table_pin RPC directly
     const { data: vData, error: vError } = await supabaseAdmin.rpc('verify_table_pin', {
       p_table_code: table_code,
       p_pin: pin,
     });
 
-    if (!vError && vData) {
-      rpcData = vData;
-    } else {
-      // 2. Fallback to join_session RPC if that exists
-      const { data: jData, error: jError } = await supabaseAdmin.rpc('join_session', {
-        table_code: table_code,
-        pin: pin,
-      });
-
-      if (!jError && jData) {
-        rpcData = jData;
-      } else {
-        rpcError = vError || jError;
-      }
-    }
-
-    if (rpcError && !rpcData) {
-      console.error('RPC Error verifying table PIN:', rpcError);
+    if (vError || !vData) {
+      console.error('RPC Error verifying table PIN:', vError);
       return NextResponse.json({
         success: false,
         message: 'Invalid PIN. Please talk to the manager and get your PIN again.',
       });
     }
 
+    const rpcData = vData as Record<string, unknown>;
+
     // Standardize error message when PIN/table is invalid
-    if (rpcData && !rpcData.success && !rpcData.locked) {
+    if (!rpcData.success && !rpcData.locked) {
       rpcData.message = 'Invalid PIN. Please talk to the manager and get your PIN again.';
     }
 
