@@ -24,6 +24,9 @@ export async function middleware(request: NextRequest) {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookieOptions: {
+        path: '/',
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -32,7 +35,10 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              path: '/',
+            })
           );
         },
       },
@@ -91,6 +97,9 @@ export async function middleware(request: NextRequest) {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookieOptions: {
+        path: '/',
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -101,7 +110,10 @@ export async function middleware(request: NextRequest) {
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              path: '/',
+            })
           );
         },
       },

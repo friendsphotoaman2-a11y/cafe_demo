@@ -80,7 +80,7 @@ function ManagerLoginForm() {
   // Quick dev test login helper for local demonstration
   function handleDevBypass() {
     const targetUrl = searchParams.get('redirect') || searchParams.get('next') || '/manager';
-    document.cookie = `cafe_manager_dev_mode=true; path=${getCookiePath()}; max-age=86400`;
+    document.cookie = `cafe_manager_dev_mode=true; path=/; max-age=86400`;
     sessionStorage.setItem('cafe_manager_dev_mode', 'true');
     router.push(targetUrl);
   }
