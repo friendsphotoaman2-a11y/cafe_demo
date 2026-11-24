@@ -234,12 +234,45 @@ export default function ManagerDashboard() {
       setSessions(sessMap);
     }
 
-    // Orders with items
-    const { data: ordData } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .order('created_at', { ascending: false });
-    if (ordData) setAllOrders(ordData as Order[]);
+    // Orders with items (fetch via API with admin fallback, with chime on new arrivals)
+    try {
+      const ordRes = await fetch(apiUrl('/api/manager/orders'));
+      const ordJson = await ordRes.json();
+      if (ordJson.success && ordJson.orders) {
+        setAllOrders(prev => {
+          if (prev.length > 0 && ordJson.orders.length > prev.length) {
+            playWaiterCallChime();
+          }
+          return ordJson.orders as Order[];
+        });
+      } else {
+        const { data: ordData } = await supabase
+          .from('orders')
+          .select('*, order_items(*)')
+          .order('created_at', { ascending: false });
+        if (ordData) {
+          setAllOrders(prev => {
+            if (prev.length > 0 && ordData.length > prev.length) {
+              playWaiterCallChime();
+            }
+            return ordData as Order[];
+          });
+        }
+      }
+    } catch {
+      const { data: ordData } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .order('created_at', { ascending: false });
+      if (ordData) {
+        setAllOrders(prev => {
+          if (prev.length > 0 && ordData.length > prev.length) {
+            playWaiterCallChime();
+          }
+          return ordData as Order[];
+        });
+      }
+    }
 
     // Menu items
     const { data: itmData } = await supabase
@@ -334,7 +367,13 @@ export default function ManagerDashboard() {
       })
       .subscribe();
 
+    // Guaranteed background polling every 2 seconds for on-the-spot order display
+    const pollInterval = setInterval(() => {
+      loadAllData();
+    }, 2000);
+
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(callSub);
       supabase.removeChannel(dataSub);
     };

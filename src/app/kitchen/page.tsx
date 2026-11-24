@@ -148,19 +148,46 @@ export default function KitchenPage() {
     }
 
     // Active kitchen orders (PENDING, PREPARING, READY)
-    const { data: ordData } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .in('status', ['PENDING', 'PREPARING', 'READY'])
-      .order('created_at', { ascending: true });
-
-    if (ordData) setOrders(ordData as Order[]);
+    try {
+      const ordRes = await fetch(apiUrl('/api/manager/orders'));
+      const ordJson = await ordRes.json();
+      if (ordJson.success && ordJson.orders) {
+        const activeKitchenOrders = ordJson.orders.filter(
+          (o: Order) => ['PENDING', 'PREPARING', 'READY'].includes(o.status)
+        );
+        setOrders(prev => {
+          if (prev.length > 0 && activeKitchenOrders.length > prev.length) {
+            playWaiterCallChime();
+          }
+          return activeKitchenOrders;
+        });
+      } else {
+        const { data: ordData } = await supabase
+          .from('orders')
+          .select('*, order_items(*)')
+          .in('status', ['PENDING', 'PREPARING', 'READY'])
+          .order('created_at', { ascending: true });
+        if (ordData) setOrders(ordData as Order[]);
+      }
+    } catch {
+      const { data: ordData } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .in('status', ['PENDING', 'PREPARING', 'READY'])
+        .order('created_at', { ascending: true });
+      if (ordData) setOrders(ordData as Order[]);
+    }
     setLoading(false);
   }, []);
 
   // 6. Realtime Subscriptions
   useEffect(() => {
     fetchKitchenData();
+
+    // Guaranteed background polling every 2 seconds for on-the-spot KDS ticket display
+    const pollInterval = setInterval(() => {
+      fetchKitchenData();
+    }, 2000);
 
     const supabase = createClient();
     const channel = supabase
@@ -197,6 +224,7 @@ export default function KitchenPage() {
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [fetchKitchenData]);
