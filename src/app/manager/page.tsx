@@ -24,7 +24,17 @@ import { ReportsView } from '@/components/ReportsView';
 import { AuditLogView } from '@/components/AuditLogView';
 import { TableQRCodesView } from '@/components/TableQRCodesView';
 import { VegNonVegBadge } from '@/components/VegNonVegBadge';
-import { playWaiterCallChime, unlockAudio } from '@/lib/audio-chime';
+import { OrderHistoryView } from '@/components/OrderHistoryView';
+import { CustomersView } from '@/components/CustomersView';
+import {
+  playWaiterCallChime,
+  startWaiterCallRing,
+  stopWaiterCallRing,
+  testWaiterCallSound,
+  unlockAudio,
+  setAudioEnabled,
+  setAudioVolume,
+} from '@/lib/audio-chime';
 import { apiUrl, getCookiePath } from '@/lib/base-path';
 import {
   KeyRound,
@@ -65,10 +75,14 @@ import {
   User,
   History,
   Phone,
+  Users,
+  HardDrive,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import Link from 'next/link';
 
-type TabType = 'tables' | 'orders' | 'menu' | 'billing' | 'reports' | 'audit' | 'qrcodes' | 'settings';
+type TabType = 'tables' | 'orders' | 'menu' | 'billing' | 'history' | 'customers' | 'reports' | 'audit' | 'qrcodes' | 'settings';
 
 export default function ManagerDashboard() {
   const router = useRouter();
@@ -150,8 +164,15 @@ export default function ManagerDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Sound Autoplay state
+  // Sound & Audio State
   const [soundUnlocked, setSoundUnlocked] = useState(false);
+  const [soundActive, setSoundActiveState] = useState(true);
+  const [soundVol, setSoundVolState] = useState(0.85);
+
+  // Realtime Connection & Speed state
+  const [realtimeConnected, setRealtimeConnected] = useState(true);
+  const [storageStats, setStorageStats] = useState<{ total_files: number; total_size_mb: string } | null>(null);
+  const [savingPinToggle, setSavingPinToggle] = useState(false);
 
   // Cancel item state
   const [cancellingItem, setCancellingItem] = useState<{
@@ -384,19 +405,134 @@ export default function ManagerDashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bills' }, () => {
         loadAllData();
       })
-      .subscribe();
+      .subscribe(status => {
+        setRealtimeConnected(status === 'SUBSCRIBED');
+      });
 
-    // Guaranteed background polling every 2 seconds for on-the-spot order display
+    // Window event listeners for online, focus & visibility change
+    const handleOnline = () => {
+      setRealtimeConnected(true);
+      loadAllData();
+    };
+    const handleOffline = () => setRealtimeConnected(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Guaranteed background polling safety net (every 4 seconds)
     const pollInterval = setInterval(() => {
       loadAllData();
-    }, 2000);
+    }, 4000);
+
+    // Load initial storage stats
+    loadStorageStats();
 
     return () => {
       clearInterval(pollInterval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibility);
       supabase.removeChannel(callSub);
       supabase.removeChannel(dataSub);
     };
   }, [loadAllData]);
+
+  // Repeating Waiter Call Ring & Flashing Tab Title
+  useEffect(() => {
+    const pending = waiterCalls.filter(c => c.status === 'PENDING');
+    if (pending.length > 0 && soundActive) {
+      startWaiterCallRing(soundVol);
+      let alt = false;
+      const titleInterval = setInterval(() => {
+        document.title = alt
+          ? `(${pending.length}) 🛎️ Waiter Calling!`
+          : `${settings.cafe_name || 'Brew & Bites'} - Manager Portal`;
+        alt = !alt;
+      }, 1000);
+      return () => {
+        clearInterval(titleInterval);
+        stopWaiterCallRing();
+        document.title = `${settings.cafe_name || 'Brew & Bites'} - Manager Portal`;
+      };
+    } else {
+      stopWaiterCallRing();
+      document.title = `${settings.cafe_name || 'Brew & Bites'} - Manager Portal`;
+    }
+  }, [waiterCalls, soundActive, soundVol, settings.cafe_name]);
+
+  async function loadStorageStats() {
+    try {
+      const res = await fetch(apiUrl('/api/manager/storage-stats'));
+      const data = await res.json();
+      if (data.success) {
+        setStorageStats({ total_files: data.total_files, total_size_mb: data.total_size_mb });
+      }
+    } catch {}
+  }
+
+  async function handleToggleMasterPin() {
+    const current = settings.require_pin ?? true;
+    const next = !current;
+    setSavingPinToggle(true);
+    setSettings(prev => ({ ...prev, require_pin: next }));
+    try {
+      const res = await fetch(apiUrl('/api/manager/settings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...settings, require_pin: next }),
+      });
+      const data = await res.json();
+      if (data.success && data.settings) {
+        setSettings(data.settings);
+      }
+    } catch {
+      setSettings(prev => ({ ...prev, require_pin: current }));
+      alert('Failed to update Table PIN mode.');
+    } finally {
+      setSavingPinToggle(false);
+    }
+  }
+
+  async function handleTablePinOverrideChange(tableId: string, newMode: 'DEFAULT' | 'ON' | 'OFF') {
+    const currentOverrides = settings.table_pin_overrides || {};
+    const updatedOverrides = { ...currentOverrides, [tableId]: newMode };
+    setSettings(prev => ({ ...prev, table_pin_overrides: updatedOverrides }));
+    try {
+      const res = await fetch(apiUrl('/api/manager/settings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...settings, table_pin_overrides: updatedOverrides }),
+      });
+      const data = await res.json();
+      if (data.success && data.settings) {
+        setSettings(data.settings);
+      }
+    } catch {
+      setSettings(prev => ({ ...prev, table_pin_overrides: currentOverrides }));
+    }
+  }
+
+  function handleSoundToggle() {
+    const next = !soundActive;
+    setSoundActiveState(next);
+    setAudioEnabled(next);
+    if (!next) {
+      stopWaiterCallRing();
+    } else {
+      unlockAudio();
+    }
+  }
+
+  function handleVolumeChange(val: number) {
+    setSoundVolState(val);
+    setAudioVolume(val);
+  }
 
   // Actions
   async function handleLogout() {
@@ -508,6 +644,12 @@ export default function ManagerDashboard() {
     orderId: string,
     newStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' | 'CANCELLED'
   ) {
+    const prevOrders = allOrders;
+    // Optimistic UI update: instantly update state so clicks feel instantaneous
+    setAllOrders(prev =>
+      prev.map(o => (o.id === orderId ? { ...o, status: newStatus } : o))
+    );
+
     try {
       const res = await fetch(apiUrl('/api/manager/orders/update-status'), {
         method: 'POST',
@@ -515,12 +657,12 @@ export default function ManagerDashboard() {
         body: JSON.stringify({ order_id: orderId, status: newStatus }),
       });
       const data = await res.json();
-      if (data.success) {
-        setAllOrders(prev =>
-          prev.map(o => (o.id === orderId ? { ...o, status: newStatus } : o))
-        );
+      if (!data.success) {
+        setAllOrders(prevOrders); // rollback
+        alert(data.message || 'Failed to update order status');
       }
     } catch {
+      setAllOrders(prevOrders); // rollback
       alert('Failed to update order status');
     }
   }
@@ -815,6 +957,8 @@ export default function ManagerDashboard() {
     { id: 'orders' as TabType, label: 'Orders', icon: UtensilsCrossed, badge: pendingOrdersCount },
     { id: 'menu' as TabType, label: 'Menu', icon: BookOpen, badge: soldOutItemsCount > 0 ? soldOutItemsCount : 0 },
     { id: 'billing' as TabType, label: 'Billing', icon: Receipt, badge: activeSessionsCount },
+    { id: 'history' as TabType, label: 'Order History', icon: History },
+    { id: 'customers' as TabType, label: 'Customers', icon: Users },
     { id: 'reports' as TabType, label: 'Reports', icon: BarChart3 },
     { id: 'audit' as TabType, label: 'Audit Log', icon: ShieldAlert },
     { id: 'qrcodes' as TabType, label: 'QR Codes', icon: QrCode },
@@ -1028,17 +1172,53 @@ export default function ManagerDashboard() {
                 title="Tap once to unlock audio autoplay"
               >
                 <VolumeX className="w-3.5 h-3.5 text-amber-400" />
-                <span>Sound OFF (Tap for ON)</span>
+                <span>Audio Blocked (Tap ON)</span>
               </button>
             ) : (
-              <button
-                onClick={() => playWaiterCallChime()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40 transition cursor-pointer"
-                title="Sound alerts enabled - click to test"
-              >
-                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Sound ON</span>
-              </button>
+              <div className="flex items-center gap-2 bg-stone-900 border border-stone-800 px-2.5 py-1 rounded-xl">
+                <button
+                  onClick={handleSoundToggle}
+                  className={`flex items-center gap-1 text-xs font-bold transition cursor-pointer ${
+                    soundActive ? 'text-emerald-400' : 'text-stone-500 hover:text-stone-300'
+                  }`}
+                  title={soundActive ? 'Sound is ON (click to mute)' : 'Sound is MUTED (click to enable)'}
+                >
+                  {soundActive ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                  <span>{soundActive ? 'Sound ON' : 'Muted'}</span>
+                </button>
+                <span className="text-stone-700 text-xs">|</span>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.1"
+                  value={soundVol}
+                  onChange={e => handleVolumeChange(parseFloat(e.target.value))}
+                  className="w-14 h-1.5 bg-stone-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  title={`Volume: ${Math.round(soundVol * 100)}%`}
+                />
+                <span className="text-stone-700 text-xs">|</span>
+                <button
+                  onClick={() => testWaiterCallSound(soundVol)}
+                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 transition cursor-pointer"
+                  title="Test waiter call sound ring"
+                >
+                  Test Ring
+                </button>
+              </div>
+            )}
+
+            {/* Realtime Status Indicator */}
+            {realtimeConnected ? (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold font-mono">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="hidden lg:inline">Realtime Live</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-950/80 border border-red-500/30 text-red-400 text-[11px] font-bold font-mono">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                <span>Offline (5s Poll)</span>
+              </span>
             )}
             {settings.kitchen_screen_enabled && (
               <Link
@@ -1098,6 +1278,60 @@ export default function ManagerDashboard() {
                 </div>
               </div>
 
+              {/* Master Table PIN Requirement Switch */}
+              <div className="p-4 sm:p-5 rounded-3xl bg-stone-900 border border-stone-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl ${settings.require_pin ?? true ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                      {settings.require_pin ?? true ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                        <span>Master Table PIN:</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                          settings.require_pin ?? true
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        }`}>
+                          {settings.require_pin ?? true ? 'ON (PIN Required)' : 'OFF (Instant Direct Access)'}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-stone-400 mt-0.5">
+                        {settings.require_pin ?? true
+                          ? 'Guests must enter the 4-digit PIN generated for their table to access the menu.'
+                          : 'Guests directly access the ordering menu upon scanning QR or tapping NFC tag.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-stone-950/70 border border-amber-500/20 text-[11px] text-amber-300/90 flex items-center gap-2 mt-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Warning:</strong> With PIN OFF, anyone who scans can order. Use ON when people may order from outside the cafe.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
+                  <button
+                    type="button"
+                    onClick={handleToggleMasterPin}
+                    disabled={savingPinToggle}
+                    className={`relative inline-flex h-8 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      settings.require_pin ?? true ? 'bg-amber-500' : 'bg-stone-700'
+                    }`}
+                    title="Toggle Master PIN Requirement"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-stone-950 shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[10px] font-black ${
+                        settings.require_pin ?? true ? 'translate-x-8 text-amber-400' : 'translate-x-0 text-stone-400'
+                      }`}
+                    >
+                      {settings.require_pin ?? true ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {tables.map(table => {
                   const session = sessions[table.id];
@@ -1106,6 +1340,10 @@ export default function ManagerDashboard() {
                     c => c.table_id === table.id && c.status === 'PENDING'
                   );
                   const isWaiterCalling = !!waiterCall;
+
+                  // Per-table PIN requirement evaluation
+                  const tableOverride = settings.table_pin_overrides?.[table.id] || 'DEFAULT';
+                  const isPinRequired = tableOverride === 'ON' ? true : tableOverride === 'OFF' ? false : (settings.require_pin ?? true);
 
                   // State Colors: Red (Waiter Calling), Orange (Active), Green (Free)
                   const sessionOrders = isActive
@@ -1158,8 +1396,8 @@ export default function ManagerDashboard() {
                               </span>
                             </div>
 
-                            {/* State Color Badges */}
-                            <div className="mt-1 flex items-center gap-1.5">
+                            {/* State & PIN Mode Badges */}
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
                               {isWaiterCalling ? (
                                 <span className="inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40">
                                   <Bell className="w-3 h-3 text-red-400 animate-bounce" />
@@ -1176,19 +1414,48 @@ export default function ManagerDashboard() {
                                   <span>Free / Ready</span>
                                 </span>
                               )}
+
+                              {!isPinRequired && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 border border-blue-500/30 font-mono">
+                                  <Unlock className="w-2.5 h-2.5 text-blue-400" />
+                                  <span>Open (no PIN)</span>
+                                </span>
+                              )}
                             </div>
                           </div>
 
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              setQrModalTable(table);
-                            }}
-                            className="p-2 rounded-xl bg-stone-800/80 hover:bg-stone-700 text-stone-300 transition cursor-pointer"
-                            title="Print / View QR Stand"
-                          >
-                            <QrCode className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {/* Per-Table PIN Override Dropdown */}
+                            <select
+                              onClick={e => e.stopPropagation()}
+                              value={tableOverride}
+                              onChange={e =>
+                                handleTablePinOverrideChange(
+                                  table.id,
+                                  e.target.value as 'DEFAULT' | 'ON' | 'OFF'
+                                )
+                              }
+                              className="text-[10px] bg-stone-950 border border-stone-800 rounded-lg px-2 py-1 text-stone-300 font-mono focus:outline-hidden hover:border-amber-500/50 cursor-pointer"
+                              title="Per-table PIN requirement override"
+                            >
+                              <option value="DEFAULT">
+                                Default ({settings.require_pin ?? true ? 'PIN ON' : 'PIN OFF'})
+                              </option>
+                              <option value="ON">PIN: Force ON</option>
+                              <option value="OFF">PIN: Force OFF (Open)</option>
+                            </select>
+
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                setQrModalTable(table);
+                              }}
+                              className="p-1.5 rounded-lg bg-stone-800/80 hover:bg-stone-700 text-stone-300 transition cursor-pointer"
+                              title="Print / View QR Stand"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Waiter Calling Alert Note */}
@@ -1203,8 +1470,26 @@ export default function ManagerDashboard() {
                           </div>
                         )}
 
-                        {/* PIN Area (Visible for Active Tables) */}
-                        {isActive ? (
+                        {/* PIN Area */}
+                        {!isPinRequired ? (
+                          <div className="bg-blue-950/20 border border-blue-500/30 rounded-2xl p-3.5 my-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5 text-blue-400 font-bold text-xs uppercase tracking-wider mb-0.5">
+                              <Unlock className="w-3.5 h-3.5" />
+                              <span>Direct Access Mode (No PIN)</span>
+                            </div>
+                            <p className="text-[11px] text-stone-300 font-sans">
+                              {isActive
+                                ? 'Customer has open ordering session.'
+                                : 'Table is open. Scanning QR opens menu directly.'}
+                            </p>
+                            {isActive && (
+                              <div className="flex items-center justify-center gap-1.5 text-[11px] font-mono text-blue-200/80 mt-1">
+                                <Clock className="w-3 h-3 text-blue-400" />
+                                <span>Open for: <strong>{getTableDuration(session.opened_at)}</strong></span>
+                              </div>
+                            )}
+                          </div>
+                        ) : isActive ? (
                           <div className="bg-amber-950/50 border border-amber-900/60 rounded-2xl p-3.5 my-2.5 text-center">
                             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
                               Active 4-Digit Table PIN
@@ -1240,16 +1525,29 @@ export default function ManagerDashboard() {
 
                       {/* Card Footer Actions */}
                       <div className="flex gap-2 mt-4 pt-3 border-t border-stone-800">
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            setSelectedTableForPanel(table);
-                          }}
-                          className="flex-1 py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                        >
-                          <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{isActive ? 'Manage Session' : 'Generate PIN'}</span>
-                        </button>
+                        {isPinRequired ? (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedTableForPanel(table);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          >
+                            <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                            <span>{isActive ? 'Manage Session' : 'Generate PIN'}</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedTableForPanel(table);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          >
+                            <Layers className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Manage Table</span>
+                          </button>
+                        )}
 
                         {isActive && (
                           <button
@@ -2312,7 +2610,29 @@ export default function ManagerDashboard() {
           )}
 
           {/* -------------------------------------------------------- */}
-          {/* TAB 5: REPORTS                                           */}
+          {/* TAB: ORDER HISTORY                                       */}
+          {/* -------------------------------------------------------- */}
+          {activeTab === 'history' && (
+            <OrderHistoryView
+              onReprintInvoice={bill => {
+                setInspectedInvoice({
+                  bill,
+                  items: [],
+                  source: 'google_sheets',
+                });
+              }}
+            />
+          )}
+
+          {/* -------------------------------------------------------- */}
+          {/* TAB: CUSTOMER DIRECTORY                                  */}
+          {/* -------------------------------------------------------- */}
+          {activeTab === 'customers' && (
+            <CustomersView />
+          )}
+
+          {/* -------------------------------------------------------- */}
+          {/* TAB: REPORTS                                             */}
           {/* -------------------------------------------------------- */}
           {activeTab === 'reports' && (
             <ReportsView settings={settings} />
@@ -2681,6 +3001,89 @@ export default function ManagerDashboard() {
                   <code className="text-white font-mono text-[11px] block bg-stone-900 px-3 py-1.5 rounded-lg border border-stone-800">
                     friendsphotoaman2@gmail.com
                   </code>
+                </div>
+
+                {/* Section 7: Table Security & PIN Switch (Mirrored) */}
+                <div className="space-y-4 pt-4 border-t border-stone-800/80">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <KeyRound className="w-4 h-4" />
+                    <span>Table Security &amp; 4-Digit PIN Switch</span>
+                  </h3>
+
+                  <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-white">Require Table PIN by Default</h4>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                            settings.require_pin ?? true
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          }`}
+                        >
+                          {settings.require_pin ?? true ? 'ON (PIN Required)' : 'OFF (Instant Direct Access)'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-1 max-w-md">
+                        {settings.require_pin ?? true
+                          ? 'Guests must enter the 4-digit PIN generated by manager before ordering.'
+                          : 'Guests directly access the ordering menu upon scanning QR code or tapping NFC tag.'}
+                      </p>
+                      <p className="text-[11px] text-amber-400/90 font-medium mt-1">
+                        Notice: With PIN OFF, anyone who scans can order. Use ON when people may order from outside the cafe.
+                      </p>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={settings.require_pin ?? true}
+                        onChange={e => setSettings({ ...settings, require_pin: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-stone-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Section 8: Supabase Storage Used & Images */}
+                <div className="space-y-4 pt-4 border-t border-stone-800/80">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <HardDrive className="w-4 h-4" />
+                    <span>Supabase Storage Used &amp; Media</span>
+                  </h3>
+
+                  <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-white">Menu Photos Storage</h4>
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-stone-900 border border-stone-700 text-stone-300 font-bold">
+                          {storageStats ? `${storageStats.total_files} files • ${storageStats.total_size_mb} MB` : 'Loading storage stats...'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-1 max-w-md">
+                        Dish photos compressed to ~800px WebP (&lt;150 KB). Deleting a dish removes its image automatically.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(apiUrl('/api/cron/cleanup-storage'));
+                          const d = await res.json();
+                          alert(d.message || 'Storage cleanup complete.');
+                          loadStorageStats();
+                        } catch {
+                          alert('Storage cleanup failed.');
+                        }
+                      }}
+                      className="py-2 px-3.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-200 border border-stone-700 text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Clean Orphaned Photos</span>
+                    </button>
+                  </div>
                 </div>
 
                 {settingsSuccess && (

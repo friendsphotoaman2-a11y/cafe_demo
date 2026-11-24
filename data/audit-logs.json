@@ -1,0 +1,62 @@
+[
+  {
+    "id": "audit_1732449600000_init1",
+    "timestamp": "2026-11-24T17:15:30.000Z",
+    "action": "PIN_GENERATED",
+    "actor_email": "friendsphotoaman2@gmail.com",
+    "entity_type": "table_sessions",
+    "entity_id": "Table 1",
+    "title": "PIN generated for Table 1 (PIN: 4821)",
+    "details": {
+      "table_number": "Table 1",
+      "pin_code": "4821"
+    }
+  },
+  {
+    "id": "audit_1732448200000_init2",
+    "timestamp": "2026-11-24T16:50:12.000Z",
+    "action": "PRICE_CHANGED",
+    "actor_email": "friendsphotoaman2@gmail.com",
+    "entity_type": "menu_items",
+    "entity_id": "e127ab68-702d-4551-975d-483f450d98bf",
+    "title": "Price for \"Bombay Masala Toast\" changed from ₹120 to ₹150",
+    "details": {
+      "item_name_en": "Bombay Masala Toast",
+      "item_name_hi": "बॉम्बे मसाला टोस्ट",
+      "old_price": 120,
+      "new_price": 150,
+      "difference": 30
+    }
+  },
+  {
+    "id": "audit_1732447100000_init3",
+    "timestamp": "2026-11-24T16:32:00.000Z",
+    "action": "AVAILABILITY_CHANGED",
+    "actor_email": "friendsphotoaman2@gmail.com",
+    "entity_type": "menu_items",
+    "entity_id": "item_espresso_01",
+    "title": "Classic Espresso marked Available",
+    "details": {
+      "name_en": "Classic Espresso",
+      "name_hi": "क्लासिक एस्प्रेसो",
+      "is_available": true
+    }
+  },
+  {
+    "id": "audit_1732445800000_init4",
+    "timestamp": "2026-11-24T16:10:45.000Z",
+    "action": "ORDER_CANCELLED",
+    "actor_email": "friendsphotoaman2@gmail.com",
+    "entity_type": "order_items",
+    "entity_id": "item_cancel_demo",
+    "title": "Cancelled 1x Cold Brew Coffee (₹180) - Customer changed preference to Hot Cappuccino",
+    "details": {
+      "item_name_en": "Cold Brew Coffee",
+      "item_name_hi": "कोल्ड ब्रू कॉफी",
+      "quantity": 1,
+      "price_per_unit": 180,
+      "total_refund_amount": 180,
+      "reason": "Customer changed preference to Hot Cappuccino"
+    }
+  }
+]

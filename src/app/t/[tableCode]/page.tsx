@@ -78,6 +78,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   const [orderSuccessMessage, setOrderSuccessMessage] = useState<string | null>(null);
   const [taxEnabled, setTaxEnabled] = useState(true);
   const [gstRatePercent, setGstRatePercent] = useState(5.0);
+  const [realtimeConnected, setRealtimeConnected] = useState(true);
 
   // Initialize Anonymous Auth, device_id, and check for existing open table session
   useEffect(() => {
@@ -105,7 +106,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
     setDeviceId(id);
 
-    // 3. If device already joined an open session for this table, skip the PIN screen
+    // 3. Check for existing open table session or server-enforced PIN-OFF direct access
     async function checkExistingSession() {
       const savedToken =
         localStorage.getItem(`cafe_session_${tableCode}`) ||
@@ -117,36 +118,53 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         localStorage.getItem(`cafe_table_num_${tableCode}`) ||
         sessionStorage.getItem(`cafe_table_num_${tableCode}`);
 
-      if (!savedToken || !savedSessionId) {
-        setIsCheckingSession(false);
-        return;
-      }
-
       try {
-        const res = await fetch(
-          apiUrl(`/api/table/session?table_code=${encodeURIComponent(tableCode)}&session_id=${encodeURIComponent(savedSessionId)}&session_token=${encodeURIComponent(savedToken)}`)
-        );
+        const queryParams = new URLSearchParams({
+          table_code: tableCode,
+        });
+        if (savedSessionId) queryParams.set('session_id', savedSessionId);
+        if (savedToken) queryParams.set('session_token', savedToken);
+
+        const res = await fetch(apiUrl(`/api/table/session?${queryParams.toString()}`));
         const data = await res.json();
 
-        if (data && data.success && data.active) {
-          // Already joined active session -> skip PIN screen
-          setSessionToken(savedToken);
-          setSessionId(data.session_id || savedSessionId);
-          if (data.table_number || savedTableNum) setTableNumber(data.table_number || savedTableNum);
-          setIsPinVerified(true);
-        } else {
-          // Session closed or expired -> clear storage to prompt for fresh PIN
-          localStorage.removeItem(`cafe_session_${tableCode}`);
-          localStorage.removeItem(`cafe_session_id_${tableCode}`);
-          sessionStorage.removeItem(`cafe_session_${tableCode}`);
-          sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+        if (data && data.success) {
+          if (data.active) {
+            // Either existing session is active OR server auto-joined because PIN is OFF!
+            const token = data.session_token || savedToken;
+            const sessId = data.session_id || savedSessionId;
+            const tblNum = data.table_number || savedTableNum || `Table ${tableCode}`;
+
+            setSessionToken(token);
+            setSessionId(sessId);
+            setTableNumber(tblNum);
+            setIsPinVerified(true);
+
+            if (token) {
+              localStorage.setItem(`cafe_session_${tableCode}`, token);
+              sessionStorage.setItem(`cafe_session_${tableCode}`, token);
+            }
+            if (sessId) {
+              localStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
+              sessionStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
+            }
+            localStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+            sessionStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+          } else {
+            // Session closed and PIN is required -> prompt for fresh PIN
+            localStorage.removeItem(`cafe_session_${tableCode}`);
+            localStorage.removeItem(`cafe_session_id_${tableCode}`);
+            sessionStorage.removeItem(`cafe_session_${tableCode}`);
+            sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+          }
         }
       } catch {
-        // If offline/check fails, prompt for PIN rather than assuming active
-        localStorage.removeItem(`cafe_session_${tableCode}`);
-        localStorage.removeItem(`cafe_session_id_${tableCode}`);
-        sessionStorage.removeItem(`cafe_session_${tableCode}`);
-        sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+        // If offline/check fails, fallback to saved session if present
+        if (savedToken && savedSessionId) {
+          setSessionToken(savedToken);
+          setSessionId(savedSessionId);
+          setIsPinVerified(true);
+        }
       } finally {
         setIsCheckingSession(false);
       }
@@ -268,20 +286,40 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
   }
 
-  // Fetch Menu, Categories, and Settings
+  // Fetch Menu, Categories, and Settings (Stale-While-Revalidate with sessionStorage)
   const refreshMenu = React.useCallback(async () => {
+    // 1. Instant cache load
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedCats = sessionStorage.getItem('cafe_cached_categories');
+        const cachedItems = sessionStorage.getItem('cafe_cached_items');
+        if (cachedCats) setCategories(JSON.parse(cachedCats));
+        if (cachedItems) setMenuItems(JSON.parse(cachedItems));
+      } catch {}
+    }
+
     const supabase = createClient();
     const { data: catData } = await supabase
       .from('categories')
       .select('*')
       .order('display_order', { ascending: true });
-    if (catData) setCategories(catData);
+    if (catData) {
+      setCategories(catData);
+      try {
+        sessionStorage.setItem('cafe_cached_categories', JSON.stringify(catData));
+      } catch {}
+    }
 
     const { data: itemsData } = await supabase
       .from('menu_items')
       .select('*')
       .order('name_en', { ascending: true });
-    if (itemsData) setMenuItems(itemsData);
+    if (itemsData) {
+      setMenuItems(itemsData);
+      try {
+        sessionStorage.setItem('cafe_cached_items', JSON.stringify(itemsData));
+      } catch {}
+    }
 
     const { data: settingsData } = await supabase
       .from('manager_settings')
@@ -366,7 +404,22 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
 
     fetchOrders();
-    const pollInterval = setInterval(fetchOrders, 10000);
+    // Safety net: 5-second polling fallback if realtime drops
+    const pollInterval = setInterval(fetchOrders, 5000);
+
+    // Online & visibility event listeners
+    const handleOnline = () => {
+      setRealtimeConnected(true);
+      fetchOrders();
+    };
+    const handleOffline = () => setRealtimeConnected(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchOrders();
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     // Subscribe to order updates for this table session
     const orderChannel = supabase
@@ -394,7 +447,9 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           fetchOrders();
         }
       )
-      .subscribe();
+      .subscribe(status => {
+        setRealtimeConnected(status === 'SUBSCRIBED');
+      });
 
     // Subscribe to session status changes (e.g. manager closes session at billing counter)
     const sessionChannel = supabase
@@ -424,6 +479,9 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
     return () => {
       clearInterval(pollInterval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibility);
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(sessionChannel);
     };
@@ -945,9 +1003,9 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
                   {tableNumber}
                 </span>
               </div>
-              <span className="text-[10px] sm:text-[11px] text-emerald-600 font-bold flex items-center gap-1 leading-none mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                <span>{language === 'hi' ? 'लाइव टेबल ऑर्डरिंग' : 'Live Table Ordering'}</span>
+              <span className={`text-[10px] sm:text-[11px] font-bold flex items-center gap-1 leading-none mt-0.5 ${realtimeConnected ? 'text-emerald-600' : 'text-amber-600'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${realtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500 animate-ping'}`} />
+                <span>{realtimeConnected ? (language === 'hi' ? 'लाइव टेबल ऑर्डरिंग' : 'Live Table Ordering') : (language === 'hi' ? 'पुनः कनेक्ट हो रहा है...' : 'Reconnecting...')}</span>
               </span>
             </div>
           </div>

@@ -131,5 +131,7 @@ export interface ManagerSettings {
   order_id_prefix?: string;
   kitchen_screen_enabled: boolean;
   google_sheet_id: string | null;
+  require_pin?: boolean;
+  table_pin_overrides?: Record<string, 'DEFAULT' | 'ON' | 'OFF'>;
   updated_at: string;
 }

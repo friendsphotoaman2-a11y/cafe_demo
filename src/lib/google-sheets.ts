@@ -5,7 +5,7 @@ import { Bill, OrderItem } from '@/types/database';
  * Initializes and returns the authenticated Google Sheets API client
  * using the Service Account credentials from environment variables.
  */
-function getSheetsClient() {
+export function getSheetsClient() {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   // Handle escaped newlines in private key string
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n');
@@ -39,10 +39,11 @@ export async function lookupCustomerPhoneInSheet(
   firstVisit?: string;
   lastVisit?: string;
   freeRedeemed?: number;
+  totalSpent?: number;
 }> {
   const spreadsheetId = customSheetId || process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId || spreadsheetId === 'placeholder-sheet-id') {
-    return { found: false, phone, previousVisits: 0 };
+    return { found: false, phone, previousVisits: 0, totalSpent: 0 };
   }
 
   const sheets = getSheetsClient();
@@ -65,7 +66,7 @@ export async function lookupCustomerPhoneInSheet(
     }
 
     if (matchedRowIndex === -1) {
-      return { found: false, phone, previousVisits: 0 };
+      return { found: false, phone, previousVisits: 0, totalSpent: 0 };
     }
 
     // Read only the matched single row (Customers!A{row}:F{row})
@@ -84,10 +85,11 @@ export async function lookupCustomerPhoneInSheet(
       firstVisit: rowData[3] || '',
       lastVisit: rowData[4] || '',
       freeRedeemed: Number(rowData[5]) || 0,
+      totalSpent: Number(rowData[5]) || 0,
     };
   } catch (err) {
     console.warn('Error reading phone column from Customers tab:', err);
-    return { found: false, phone, previousVisits: 0 };
+    return { found: false, phone, previousVisits: 0, totalSpent: 0 };
   }
 }
 
@@ -458,7 +460,7 @@ export async function initializeSheetTabs(spreadsheetId: string) {
     if (!existingTitles.includes('Orders')) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Orders!A1:M1',
+        range: 'Orders!A1:O1',
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [
@@ -469,13 +471,15 @@ export async function initializeSheetTabs(spreadsheetId: string) {
               'table',
               'customer_name',
               'phone',
+              'items',
               'subtotal',
               'tax',
               'total',
               'payment_mode',
+              'status',
+              'completed_at',
               'visit_no',
               'free_visit',
-              'created_by',
             ],
           ],
         },
@@ -515,7 +519,7 @@ export async function initializeSheetTabs(spreadsheetId: string) {
               'visit_count',
               'first_visit',
               'last_visit',
-              'free_redeemed',
+              'total_spent',
             ],
           ],
         },
@@ -553,9 +557,12 @@ export async function syncBillToGoogleSheets(
     const dateFormatted = now.toISOString().split('T')[0];
     const timeFormatted = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
     const nowFormatted = `${dateFormatted} ${timeFormatted}`;
+    const itemsSummaryText = items && items.length > 0
+      ? items.map(it => `${it.quantity}x ${it.item_name_en}`).join(', ')
+      : 'Order Items';
 
-    // 2. Update or Append Orders tab (update customer row if customer already exists)
-    // Headers: order_id, date, time, table, customer_name, phone, subtotal, tax, total, payment_mode, visit_no, free_visit, created_by
+    // 2. Update or Append Orders tab (deduplicate strictly by order_id)
+    // Headers: order_id, date, time, table, customer_name, phone, items, subtotal, tax, total, payment_mode, status, completed_at, visit_no, free_visit
     const orderRow = [
       bill.invoice_number,
       dateFormatted,
@@ -563,49 +570,45 @@ export async function syncBillToGoogleSheets(
       bill.table_number,
       bill.customer_name,
       bill.customer_phone,
+      itemsSummaryText,
       bill.subtotal,
       bill.gst_amount,
       bill.total_amount,
       paymentMode ? paymentMode.toUpperCase() : 'COUNTER',
+      'COMPLETED',
+      nowFormatted,
       bill.visit_count,
       bill.is_loyalty_free_coffee ? 'YES' : 'NO',
-      'Manager',
     ];
 
     let matchedOrderRowIndex = -1;
-    const cleanBillPhone = (bill.customer_phone || '').replace(/\D/g, '');
-    const billName = (bill.customer_name || '').trim().toLowerCase();
+    const targetOrderId = (bill.invoice_number || '').trim().toLowerCase();
 
     try {
       const ordersRes = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Orders!A:M',
+        range: 'Orders!A:A',
       });
       const orderRows = ordersRes.data.values || [];
 
       for (let i = 1; i < orderRows.length; i++) {
         const row = orderRows[i];
         if (!row || row.length === 0) continue;
-        const rowName = (row[4] || '').trim().toLowerCase();
-        const rowPhone = (row[5] || '').toString().replace(/\D/g, '');
+        const oId = (row[0] || '').toString().trim().toLowerCase();
 
-        const isPhoneMatch =
-          cleanBillPhone && cleanBillPhone.length >= 10 && rowPhone.includes(cleanBillPhone);
-        const isNameMatch = billName && billName !== 'guest' && billName === rowName;
-
-        if (isPhoneMatch || isNameMatch) {
+        if (oId === targetOrderId) {
           matchedOrderRowIndex = i + 1; // 1-based index
           break;
         }
       }
     } catch (orderReadErr) {
-      console.warn('Error reading Orders tab for existing customer row:', orderReadErr);
+      console.warn('Error reading Orders tab for existing order_id:', orderReadErr);
     }
 
     if (matchedOrderRowIndex !== -1) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Orders!A${matchedOrderRowIndex}:M${matchedOrderRowIndex}`,
+        range: `Orders!A${matchedOrderRowIndex}:O${matchedOrderRowIndex}`,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [orderRow],
@@ -614,7 +617,7 @@ export async function syncBillToGoogleSheets(
     } else {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'Orders!A:M',
+        range: 'Orders!A:O',
         valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         requestBody: {
@@ -705,13 +708,15 @@ export async function syncBillToGoogleSheets(
     }
 
     // 4. Update or Append Customers tab (using phone column lookup to prevent double counting on retries)
+    // Headers: phone, name, visit_count, first_visit, last_visit, total_spent
     if (bill.customer_phone && bill.customer_phone !== 'N/A') {
       const existing = await lookupCustomerPhoneInSheet(bill.customer_phone, spreadsheetId);
-      const freeRedeemedTotal = (existing.freeRedeemed || 0) + (bill.is_loyalty_free_coffee ? 1 : 0);
       const firstVisit = existing.firstVisit || nowFormatted;
+      const prevTotalSpent = existing.totalSpent || 0;
+      const updatedTotalSpent = prevTotalSpent + (Number(bill.total_amount) || 0);
 
       if (existing.found && existing.rowIndex) {
-        // Safe idempotent update: sets exact visit_count (immune to retry double-counting)
+        // Safe idempotent update: sets exact visit_count & accumulated total_spent
         await sheets.spreadsheets.values.update({
           spreadsheetId,
           range: `Customers!A${existing.rowIndex}:F${existing.rowIndex}`,
@@ -720,11 +725,11 @@ export async function syncBillToGoogleSheets(
             values: [
               [
                 bill.customer_phone,
-                bill.customer_name,
+                bill.customer_name || existing.name || 'Valued Customer',
                 bill.visit_count,
                 firstVisit,
                 nowFormatted,
-                freeRedeemedTotal,
+                updatedTotalSpent,
               ],
             ],
           },
@@ -740,11 +745,11 @@ export async function syncBillToGoogleSheets(
             values: [
               [
                 bill.customer_phone,
-                bill.customer_name,
-                bill.visit_count,
+                bill.customer_name || 'Valued Customer',
+                bill.visit_count || 1,
                 nowFormatted,
                 nowFormatted,
-                bill.is_loyalty_free_coffee ? 1 : 0,
+                Number(bill.total_amount) || 0,
               ],
             ],
           },

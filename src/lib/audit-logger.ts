@@ -7,7 +7,10 @@ export type AuditAction =
   | 'PIN_GENERATED'
   | 'ORDER_CANCELLED'
   | 'AVAILABILITY_CHANGED'
-  | 'PRICE_CHANGED';
+  | 'PRICE_CHANGED'
+  | 'MENU_ITEM_DELETED'
+  | 'SETTINGS_CHANGED'
+  | string;
 
 export interface AuditLogEntry {
   id: string;

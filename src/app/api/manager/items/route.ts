@@ -102,10 +102,10 @@ export async function PUT(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // Fetch existing item to check for price change
+    // Fetch existing item to check for price change and old image
     const { data: oldItem } = await supabaseAdmin
       .from('menu_items')
-      .select('price, name_en, name_hi')
+      .select('price, name_en, name_hi, image_url')
       .eq('id', id)
       .maybeSingle();
 
@@ -136,6 +136,24 @@ export async function PUT(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    }
+
+    // If image replaced, remove old photo from Supabase Storage
+    if (
+      image_url !== undefined &&
+      oldItem?.image_url &&
+      oldItem.image_url !== image_url &&
+      oldItem.image_url.includes('/menu-images/')
+    ) {
+      try {
+        const marker = '/menu-images/';
+        const oldPath = oldItem.image_url.substring(oldItem.image_url.indexOf(marker) + marker.length);
+        if (oldPath) {
+          await supabaseAdmin.storage.from('menu-images').remove([oldPath]);
+        }
+      } catch (storageErr) {
+        console.warn('Could not delete old menu image from storage:', storageErr);
+      }
     }
 
     // Check if price changed
@@ -169,7 +187,7 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE: Delete menu item
+// DELETE: Delete menu item & remove image from Storage
 export async function DELETE(req: NextRequest) {
   const auth = await verifyManagerAuth(req);
   if (!auth.allowed) return auth.response!;
@@ -185,13 +203,46 @@ export async function DELETE(req: NextRequest) {
     }
 
     const supabaseAdmin = createAdminClient();
+
+    // 1. Fetch item to obtain image_url before deletion
+    const { data: itemToDelete } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, name_en, image_url')
+      .eq('id', id)
+      .maybeSingle();
+
+    // 2. Delete database row
     const { error } = await supabaseAdmin.from('menu_items').delete().eq('id', id);
 
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message: 'Item deleted successfully.' });
+    // 3. Remove image from Supabase Storage if present
+    if (itemToDelete?.image_url && itemToDelete.image_url.includes('/menu-images/')) {
+      try {
+        const marker = '/menu-images/';
+        const storagePath = itemToDelete.image_url.substring(itemToDelete.image_url.indexOf(marker) + marker.length);
+        if (storagePath) {
+          await supabaseAdmin.storage.from('menu-images').remove([storagePath]);
+        }
+      } catch (storageErr) {
+        console.warn('Could not delete image from Supabase storage:', storageErr);
+      }
+    }
+
+    // 4. Audit log item deletion
+    try {
+      await recordAuditLog({
+        action: 'MENU_ITEM_DELETED',
+        entity_type: 'menu_items',
+        entity_id: id,
+        title: `Menu item "${itemToDelete?.name_en || id}" deleted`,
+        details: { item_id: id, name_en: itemToDelete?.name_en },
+      });
+    } catch {}
+
+    return NextResponse.json({ success: true, message: 'Item and image deleted successfully.' });
   } catch (err: unknown) {
     return NextResponse.json(
       { success: false, message: err instanceof Error ? err.message : 'Internal error.' },
