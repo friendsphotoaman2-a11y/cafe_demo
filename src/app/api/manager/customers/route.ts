@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
 
       const spreadsheetId = settingsRow?.google_sheet_id || process.env.GOOGLE_SHEET_ID;
 
+      let sheetFetchSuccess = false;
       if (spreadsheetId && spreadsheetId !== 'placeholder-sheet-id') {
         try {
           const sheets = getSheetsClient();
@@ -69,41 +70,42 @@ export async function GET(req: NextRequest) {
               total_spent: Number(r[5]) || 0,
             });
           }
+          sheetFetchSuccess = true;
         } catch (sheetErr) {
           console.warn('Error reading Customers from Google Sheet:', sheetErr);
         }
       }
 
-      // Also merge any customers from Supabase bills
-      const { data: dbBills } = await supabaseAdmin
-        .from('bills')
-        .select('customer_phone, customer_name, visit_count, created_at, total_amount')
-        .not('customer_phone', 'is', null)
-        .order('created_at', { ascending: false });
+      // Fallback to Supabase bills ONLY if Google Sheet could not be reached / is not configured
+      if (!sheetFetchSuccess) {
+        const { data: dbBills } = await supabaseAdmin
+          .from('bills')
+          .select('customer_phone, customer_name, visit_count, created_at, total_amount')
+          .not('customer_phone', 'is', null)
+          .order('created_at', { ascending: false });
 
-      if (dbBills && dbBills.length > 0) {
-        const custMap = new Map<string, CustomerRecord>();
-        customers.forEach(c => custMap.set(c.phone.replace(/\D/g, ''), c));
+        if (dbBills && dbBills.length > 0) {
+          const custMap = new Map<string, CustomerRecord>();
+          for (const b of dbBills) {
+            const cleanPhone = (b.customer_phone || '').replace(/\D/g, '');
+            if (!cleanPhone || cleanPhone.length < 10) continue;
 
-        for (const b of dbBills) {
-          const cleanPhone = (b.customer_phone || '').replace(/\D/g, '');
-          if (!cleanPhone || cleanPhone.length < 10) continue;
-
-          if (!custMap.has(cleanPhone)) {
-            const newCust: CustomerRecord = {
-              phone: b.customer_phone!,
-              name: b.customer_name || 'Valued Customer',
-              visit_count: Number(b.visit_count) || 1,
-              first_visit: b.created_at,
-              last_visit: b.created_at,
-              total_spent: Number(b.total_amount) || 0,
-            };
-            custMap.set(cleanPhone, newCust);
-            customers.push(newCust);
-          } else {
-            const existing = custMap.get(cleanPhone)!;
-            if (b.visit_count && b.visit_count > existing.visit_count) {
-              existing.visit_count = b.visit_count;
+            if (!custMap.has(cleanPhone)) {
+              const newCust: CustomerRecord = {
+                phone: b.customer_phone!,
+                name: b.customer_name || 'Valued Customer',
+                visit_count: Number(b.visit_count) || 1,
+                first_visit: b.created_at,
+                last_visit: b.created_at,
+                total_spent: Number(b.total_amount) || 0,
+              };
+              custMap.set(cleanPhone, newCust);
+              customers.push(newCust);
+            } else {
+              const existing = custMap.get(cleanPhone)!;
+              if (b.visit_count && b.visit_count > existing.visit_count) {
+                existing.visit_count = b.visit_count;
+              }
             }
           }
         }

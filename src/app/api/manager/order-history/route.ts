@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
         .maybeSingle();
 
       const spreadsheetId = settingsRow?.google_sheet_id || process.env.GOOGLE_SHEET_ID;
+      let sheetFetchSuccess = false;
 
       if (spreadsheetId && spreadsheetId !== 'placeholder-sheet-id') {
         try {
@@ -89,25 +90,24 @@ export async function GET(req: NextRequest) {
               free_visit: (r[14] || 'NO').toString(),
             });
           }
+          sheetFetchSuccess = true;
         } catch (sheetErr) {
           console.warn('Error reading Orders from Sheet for Order History:', sheetErr);
         }
       }
 
-      // Also merge any recent Supabase bills that may not have synced yet
-      const { data: dbBills } = await supabaseAdmin
-        .from('bills')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // Fallback to Supabase bills ONLY if Google Sheets could not be reached / is not configured
+      if (!sheetFetchSuccess) {
+        const { data: dbBills } = await supabaseAdmin
+          .from('bills')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
 
-      if (dbBills && dbBills.length > 0) {
-        const existingIds = new Set(allOrders.map(o => o.order_id.toLowerCase().trim()));
-        for (const b of dbBills) {
-          const inv = (b.invoice_number || '').toLowerCase().trim();
-          if (inv && !existingIds.has(inv)) {
+        if (dbBills && dbBills.length > 0) {
+          for (const b of dbBills) {
             const billDate = new Date(b.created_at);
-            allOrders.unshift({
+            allOrders.push({
               order_id: b.invoice_number,
               date: billDate.toISOString().split('T')[0],
               time: billDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
@@ -124,7 +124,6 @@ export async function GET(req: NextRequest) {
               visit_no: Number(b.visit_count) || 1,
               free_visit: b.is_loyalty_free_coffee ? 'YES' : 'NO',
             });
-            existingIds.add(inv);
           }
         }
       }
