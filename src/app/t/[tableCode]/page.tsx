@@ -168,7 +168,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   }, [lockCountdown, isLocked]);
 
   // Haptic feedback helper
-  const triggerHaptic = (ms: number = 35) => {
+  const triggerHaptic = (ms: number | number[] = 35) => {
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(ms);
@@ -431,6 +431,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
   // Cart Management
   function addToCart(item: MenuItem) {
+    triggerHaptic(40);
     setCart(prev => {
       const existing = prev.find(i => i.item.id === item.id);
       if (existing) {
@@ -443,6 +444,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   }
 
   function updateQuantity(itemId: string, delta: number) {
+    // Distinct haptic pulse: short crisp on increase (35ms), firmer feedback on delete/reduce (55ms)
+    triggerHaptic(delta > 0 ? 35 : 55);
     setCart(prev =>
       prev
         .map(i => {
@@ -474,6 +477,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   async function handlePlaceOrder() {
     if ((!sessionToken && !sessionId) || cart.length === 0) return;
 
+    // Haptic pulse on tapping Place Order
+    triggerHaptic([40, 60, 40]);
     setOrderingInProgress(true);
     setCartError(null);
 
@@ -534,7 +539,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           await refreshMenu();
         }
       } else {
-        // Order success: show short confirmation and clear cart
+        // Order success: trigger distinct success vibration, show confirmation and clear cart
+        triggerHaptic([60, 50, 100]);
         setCart([]);
         setIsCartOpen(false);
         setCartError(null);

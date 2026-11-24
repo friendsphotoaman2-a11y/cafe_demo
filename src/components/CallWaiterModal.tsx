@@ -36,7 +36,7 @@ export function CallWaiterModal({
     { id: 'Help', en: 'Cutlery / Napkins', hi: 'चम्मच / नैपकिन' },
   ];
 
-  const triggerHaptic = (ms = 40) => {
+  const triggerHaptic = (ms: number | number[] = 40) => {
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(ms);
@@ -81,6 +81,7 @@ export function CallWaiterModal({
           );
         }
       } else {
+        triggerHaptic([60, 40, 90]);
         setSuccess(true);
         setSuccessMessage(
           language === 'hi' ? 'वेटर आपकी टेबल की तरफ आ रहा है!' : 'Waiter has been alerted!'
