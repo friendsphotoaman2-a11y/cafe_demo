@@ -16,9 +16,9 @@ function ManagerLoginForm() {
     // Check if redirected with not_allowed or auth_failed
     const errorParam = searchParams.get('error');
     if (errorParam === 'not_allowed') {
-      setErrorMsg('This account is not allowed.');
+      setErrorMsg('Access Denied: Yeh Google account cafe manager ke roop mein authorized nahi hai. Sirf registered manager email ko access milega.');
     } else if (errorParam === 'auth_failed') {
-      setErrorMsg('Authentication failed. Please try again.');
+      setErrorMsg('Authentication failed. Kripya dobara prayas karein.');
     }
 
     const targetUrl = searchParams.get('redirect') || searchParams.get('next') || '/manager';
@@ -39,7 +39,7 @@ function ManagerLoginForm() {
             router.replace(targetUrl);
           } else {
             await supabase.auth.signOut();
-            setErrorMsg('This account is not allowed.');
+            setErrorMsg('Access Denied: Yeh Google account cafe manager ke roop mein authorized nahi hai.');
           }
         } catch {
           // Ignore network glitch
