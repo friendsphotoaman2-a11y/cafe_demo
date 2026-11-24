@@ -163,7 +163,12 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         if (savedSessionId) queryParams.set('session_id', savedSessionId);
         if (savedToken) queryParams.set('session_token', savedToken);
 
-        const res = await fetch(apiUrl(`/api/table/session?${queryParams.toString()}`));
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(apiUrl(`/api/table/session?${queryParams.toString()}`), {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
         const data = await res.json();
 
         if (data && data.success) {
@@ -177,21 +182,25 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
             setTableNumber(tblNum);
             setIsPinVerified(true);
 
-            if (token) {
-              localStorage.setItem(`cafe_session_${tableCode}`, token);
-              sessionStorage.setItem(`cafe_session_${tableCode}`, token);
-            }
-            if (sessId) {
-              localStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
-              sessionStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
-            }
-            localStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
-            sessionStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+            try {
+              if (token) {
+                localStorage.setItem(`cafe_session_${tableCode}`, token);
+                sessionStorage.setItem(`cafe_session_${tableCode}`, token);
+              }
+              if (sessId) {
+                localStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
+                sessionStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
+              }
+              localStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+              sessionStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+            } catch {}
           } else {
-            localStorage.removeItem(`cafe_session_${tableCode}`);
-            localStorage.removeItem(`cafe_session_id_${tableCode}`);
-            sessionStorage.removeItem(`cafe_session_${tableCode}`);
-            sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+            try {
+              localStorage.removeItem(`cafe_session_${tableCode}`);
+              localStorage.removeItem(`cafe_session_id_${tableCode}`);
+              sessionStorage.removeItem(`cafe_session_${tableCode}`);
+              sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+            } catch {}
           }
         }
       } catch {
@@ -234,6 +243,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   // Handle PIN verification with unlock animation
   async function handleVerifyPin(e?: React.FormEvent, pinToVerify?: string) {
     if (e) e.preventDefault();
+    if (verifyingPin || pinUnlockSuccess) return;
     const targetPin = pinToVerify !== undefined ? pinToVerify : pin;
     if (targetPin.length !== 4) {
       setPinError(
@@ -252,11 +262,15 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
         ? 'अमान्य पिन। कृपया मैनेजर से बात करें और अपना पिन दोबारा प्राप्त करें।'
         : 'Invalid PIN. Please talk to the manager and get your PIN again.';
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
       const res = await fetch(apiUrl('/api/table/verify-pin'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_code: tableCode, pin: targetPin, device_id: deviceId }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
@@ -277,7 +291,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
 
       if (!data.success) {
         triggerHaptic([60, 40, 60]);
-        setPinError(defaultInvalidMsg);
+        setPinError(data.message || defaultInvalidMsg);
         setPin('');
         return;
       }
@@ -291,22 +305,33 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       const tableNum = data.table_number || `Table ${tableCode}`;
       setTableNumber(tableNum);
 
-      localStorage.setItem(`cafe_session_${tableCode}`, data.session_token);
-      localStorage.setItem(`cafe_session_id_${tableCode}`, data.session_id);
-      localStorage.setItem(`cafe_table_num_${tableCode}`, tableNum);
+      try {
+        localStorage.setItem(`cafe_session_${tableCode}`, data.session_token);
+        localStorage.setItem(`cafe_session_id_${tableCode}`, data.session_id);
+        localStorage.setItem(`cafe_table_num_${tableCode}`, tableNum);
 
-      sessionStorage.setItem(`cafe_session_${tableCode}`, data.session_token);
-      sessionStorage.setItem(`cafe_session_id_${tableCode}`, data.session_id);
-      sessionStorage.setItem(`cafe_table_num_${tableCode}`, tableNum);
+        sessionStorage.setItem(`cafe_session_${tableCode}`, data.session_token);
+        sessionStorage.setItem(`cafe_session_id_${tableCode}`, data.session_id);
+        sessionStorage.setItem(`cafe_table_num_${tableCode}`, tableNum);
+      } catch {}
 
       setTimeout(() => {
         setPinUnlockSuccess(false);
         setIsPinVerified(true);
       }, 420);
-    } catch {
+    } catch (err: unknown) {
       triggerHaptic([60, 40, 60]);
-      setPinError(defaultInvalidMsg);
+      if (err instanceof Error && err.name === 'AbortError') {
+        setPinError(
+          language === 'hi'
+            ? 'कनेक्शन टाइम आउट। कृपया इंटरनेट जांचें और फिर प्रयास करें।'
+            : 'Connection timed out. Please check your internet and try again.'
+        );
+      } else {
+        setPinError(defaultInvalidMsg);
+      }
     } finally {
+      clearTimeout(timeoutId);
       setVerifyingPin(false);
     }
   }
