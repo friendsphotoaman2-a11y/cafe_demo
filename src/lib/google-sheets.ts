@@ -209,6 +209,228 @@ export async function searchInvoiceInSheet(
 }
 
 /**
+ * Searches all historical orders and customer stats in Google Sheets by phone, order_id, or name.
+ */
+export async function searchAllCustomerInvoicesFromSheet(
+  query: string,
+  customSheetId?: string | null
+): Promise<{
+  found: boolean;
+  customer?: {
+    name: string;
+    phone: string;
+    totalVisits: number;
+    totalSpent: number;
+    firstVisit?: string;
+    lastVisit?: string;
+    freeRedeemed?: number;
+  };
+  invoices: Array<{
+    bill: Bill;
+    items: OrderItem[];
+    source: 'google_sheets';
+  }>;
+}> {
+  const spreadsheetId = customSheetId || process.env.GOOGLE_SHEET_ID;
+  if (!spreadsheetId || spreadsheetId === 'placeholder-sheet-id') {
+    return { found: false, invoices: [] };
+  }
+
+  const sheets = getSheetsClient();
+  const trimmed = query.trim();
+  const queryLower = trimmed.toLowerCase();
+  const digitsOnly = trimmed.replace(/\D/g, '');
+  const cleanPhone =
+    digitsOnly.length > 10 && digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
+
+  try {
+    // 1. Fetch Customers tab to get customer profile
+    let customerProfile: {
+      name: string;
+      phone: string;
+      totalVisits: number;
+      totalSpent: number;
+      firstVisit?: string;
+      lastVisit?: string;
+      freeRedeemed?: number;
+    } | undefined = undefined;
+
+    try {
+      const customersRes = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Customers!A:F',
+      });
+      const customerRows = customersRes.data.values || [];
+      for (let i = 1; i < customerRows.length; i++) {
+        const row = customerRows[i];
+        if (!row || row.length === 0) continue;
+        const phone = (row[0] || '').toString().replace(/\D/g, '');
+        const name = (row[1] || '').toString().trim();
+
+        if (
+          (cleanPhone.length >= 7 && phone.includes(cleanPhone)) ||
+          (queryLower.length >= 3 && name.toLowerCase().includes(queryLower))
+        ) {
+          customerProfile = {
+            phone: row[0] || cleanPhone,
+            name: row[1] || 'Guest',
+            totalVisits: Number(row[2]) || 0,
+            firstVisit: row[3] || '',
+            lastVisit: row[4] || '',
+            freeRedeemed: Number(row[5]) || 0,
+            totalSpent: 0,
+          };
+          break;
+        }
+      }
+    } catch (custErr) {
+      console.warn('Error reading Customers tab in sheet search:', custErr);
+    }
+
+    // 2. Fetch Orders tab rows (range: Orders!A:M)
+    const ordersRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Orders!A:M',
+    });
+
+    const orders = ordersRes.data.values || [];
+    const matchedOrders: string[][] = [];
+
+    // Row 0 is headers
+    for (let i = 1; i < orders.length; i++) {
+      const row = orders[i];
+      if (!row || row.length === 0) continue;
+      const orderId = (row[0] || '').toString().trim();
+      const name = (row[4] || '').toString().trim();
+      const phone = (row[5] || '').toString().replace(/\D/g, '');
+
+      const isMatch =
+        (trimmed && orderId.toLowerCase().includes(queryLower)) ||
+        (cleanPhone.length >= 7 && phone.includes(cleanPhone)) ||
+        (queryLower.length >= 3 && name.toLowerCase().includes(queryLower));
+
+      if (isMatch) {
+        matchedOrders.push(row);
+      }
+    }
+
+    if (matchedOrders.length === 0 && !customerProfile) {
+      return { found: false, invoices: [] };
+    }
+
+    // 3. Fetch OrderItems tab (range: OrderItems!A:F) if we have matched orders
+    let allItemRows: string[][] = [];
+    if (matchedOrders.length > 0) {
+      try {
+        const itemsRes = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: 'OrderItems!A:F',
+        });
+        allItemRows = itemsRes.data.values || [];
+      } catch (itemsErr) {
+        console.warn('Error reading OrderItems in searchAllCustomerInvoicesFromSheet:', itemsErr);
+      }
+    }
+
+    // Map items by orderId
+    const itemsByOrderId = new Map<string, OrderItem[]>();
+    for (let i = 1; i < allItemRows.length; i++) {
+      const r = allItemRows[i];
+      if (!r || !r[0]) continue;
+      const oId = r[0].toString().trim();
+      if (!itemsByOrderId.has(oId)) {
+        itemsByOrderId.set(oId, []);
+      }
+      const existingItems = itemsByOrderId.get(oId)!;
+      existingItems.push({
+        id: `sheet-item-${i}-${oId}`,
+        order_id: oId,
+        item_id: `item-${existingItems.length}`,
+        item_name_en: r[1] || 'Menu Item',
+        item_name_hi: '',
+        price_per_unit: Number(r[3]) || 0,
+        quantity: Number(r[2]) || 1,
+        status: 'SERVED',
+        item_notes: null,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    let calculatedTotalSpent = 0;
+    const reconstructedInvoices: Array<{
+      bill: Bill;
+      items: OrderItem[];
+      source: 'google_sheets';
+    }> = [];
+
+    for (const ord of matchedOrders) {
+      const orderId = (ord[0] || '').toString().trim();
+      const totalAmount = Number(ord[8]) || 0;
+      calculatedTotalSpent += totalAmount;
+
+      const billDateStr = ord[1] && ord[2] ? `${ord[1]} ${ord[2]}` : null;
+      const billIsoDate = billDateStr && !isNaN(Date.parse(billDateStr))
+        ? new Date(billDateStr).toISOString()
+        : new Date().toISOString();
+
+      const bill: Bill = {
+        id: `sheet-bill-${orderId}`,
+        invoice_number: orderId,
+        session_id: '00000000-0000-0000-0000-000000000000',
+        table_id: '00000000-0000-0000-0000-000000000000',
+        table_number: ord[3] || 'Table',
+        customer_name: ord[4] || 'Guest',
+        customer_phone: ord[5] || 'N/A',
+        subtotal: Number(ord[6]) || 0,
+        discount: 0,
+        gst_rate: 5.0,
+        gst_amount: Number(ord[7]) || 0,
+        total_amount: totalAmount,
+        visit_count: Number(ord[10]) || 1,
+        is_loyalty_free_coffee: ord[11] === 'YES',
+        synced_to_sheets: true,
+        sheets_synced_at: new Date().toISOString(),
+        created_at: billIsoDate,
+      };
+
+      const billItems = itemsByOrderId.get(orderId) || [];
+      reconstructedInvoices.push({
+        bill,
+        items: billItems,
+        source: 'google_sheets',
+      });
+    }
+
+    if (customerProfile) {
+      customerProfile.totalSpent = calculatedTotalSpent;
+      if (customerProfile.totalVisits === 0) {
+        customerProfile.totalVisits = matchedOrders.length;
+      }
+    } else if (matchedOrders.length > 0) {
+      const firstOrd = matchedOrders[0];
+      customerProfile = {
+        phone: firstOrd[5] || cleanPhone,
+        name: firstOrd[4] || 'Guest',
+        totalVisits: matchedOrders.length,
+        totalSpent: calculatedTotalSpent,
+        firstVisit: matchedOrders[matchedOrders.length - 1][1] || '',
+        lastVisit: matchedOrders[0][1] || '',
+        freeRedeemed: matchedOrders.filter(o => o[11] === 'YES').length,
+      };
+    }
+
+    return {
+      found: true,
+      customer: customerProfile,
+      invoices: reconstructedInvoices,
+    };
+  } catch (err) {
+    console.warn('Error in searchAllCustomerInvoicesFromSheet:', err);
+    return { found: false, invoices: [] };
+  }
+}
+
+/**
  * Ensures required tabs ('Orders', 'OrderItems', 'Customers') exist in the spreadsheet with headers.
  */
 export async function initializeSheetTabs(spreadsheetId: string) {

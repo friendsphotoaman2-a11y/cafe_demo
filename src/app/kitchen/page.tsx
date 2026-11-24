@@ -153,7 +153,9 @@ export default function KitchenPage() {
       const ordJson = await ordRes.json();
       if (ordJson.success && ordJson.orders) {
         const activeKitchenOrders = ordJson.orders.filter(
-          (o: Order) => ['PENDING', 'PREPARING', 'READY'].includes(o.status)
+          (o: Order) =>
+            ['PENDING', 'PREPARING', 'READY'].includes(o.status) &&
+            (o.order_items || []).some(it => it.status !== 'CANCELLED')
         );
         setOrders(prev => {
           if (prev.length > 0 && activeKitchenOrders.length > prev.length) {

@@ -62,6 +62,9 @@ import {
   Hash,
   Percent,
   ShieldAlert,
+  User,
+  History,
+  Phone,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -122,6 +125,22 @@ export default function ManagerDashboard() {
     bill: Bill;
     items: OrderItem[];
     source: 'supabase' | 'google_sheets';
+  } | null>(null);
+  const [customerHistory, setCustomerHistory] = useState<{
+    customer: {
+      name: string;
+      phone: string;
+      totalVisits: number;
+      totalSpent: number;
+      firstVisit?: string;
+      lastVisit?: string;
+      freeRedeemed?: number;
+    };
+    invoices: Array<{
+      bill: Bill;
+      items: OrderItem[];
+      source: 'supabase' | 'google_sheets';
+    }>;
   } | null>(null);
 
   // Live timer tick for active table cards
@@ -645,20 +664,52 @@ export default function ManagerDashboard() {
       const res = await fetch(apiUrl(`/api/manager/invoices/search?q=${encodeURIComponent(q)}`));
       const data = await res.json();
 
-      if (data.success && data.found && data.bill) {
-        setInspectedInvoice({
-          bill: data.bill,
-          items: data.items || [],
-          source: data.source || 'supabase',
-        });
-        setSearchError(null);
+      if (data.success && data.found) {
+        if (data.invoices && data.invoices.length > 0) {
+          setCustomerHistory({
+            customer: data.customer || {
+              name: data.invoices[0].bill.customer_name || 'Customer',
+              phone: data.invoices[0].bill.customer_phone || q,
+              totalVisits: data.invoices.length,
+              totalSpent: data.invoices.reduce((acc: number, inv: { bill: Bill }) => acc + (Number(inv.bill.total_amount) || 0), 0),
+              firstVisit: data.invoices[data.invoices.length - 1].bill.created_at,
+              lastVisit: data.invoices[0].bill.created_at,
+            },
+            invoices: data.invoices,
+          });
+          setSearchError(null);
+        } else if (data.bill) {
+          setCustomerHistory({
+            customer: data.customer || {
+              name: data.bill.customer_name || 'Customer',
+              phone: data.bill.customer_phone || q,
+              totalVisits: data.bill.visit_count || 1,
+              totalSpent: Number(data.bill.total_amount) || 0,
+              firstVisit: data.bill.created_at,
+              lastVisit: data.bill.created_at,
+            },
+            invoices: [
+              {
+                bill: data.bill,
+                items: data.items || [],
+                source: data.source || 'supabase',
+              },
+            ],
+          });
+          setSearchError(null);
+        } else {
+          setCustomerHistory(null);
+          setSearchError(`No invoice records found for "${q}".`);
+        }
       } else {
+        setCustomerHistory(null);
         setSearchError(
           data.message ||
-            `No invoice found for "${q}" in Supabase (last 30 days) or Google Sheets archive.`
+            `No invoice found for "${q}" in Supabase or Google Sheets archive.`
         );
       }
     } catch {
+      setCustomerHistory(null);
       setSearchError('Invoice search failed. Please verify network connection.');
     } finally {
       setSearchingInvoice(false);
@@ -696,7 +747,12 @@ export default function ManagerDashboard() {
 
   // Badges & Counters
   const pendingOrdersCount = useMemo(
-    () => allOrders.filter(o => o.status === 'PENDING' || o.status === 'PREPARING').length,
+    () =>
+      allOrders.filter(o => {
+        if (o.status === 'CANCELLED' || o.status === 'BILLED') return false;
+        const activeItems = (o.order_items || []).filter(it => it.status !== 'CANCELLED');
+        return activeItems.length > 0 && (o.status === 'PENDING' || o.status === 'PREPARING');
+      }).length,
     [allOrders]
   );
   const pendingCalls = useMemo(
@@ -716,9 +772,13 @@ export default function ManagerDashboard() {
     return tables.filter(t => sessions[t.id]);
   }, [tables, sessions]);
 
-  // Group active orders by table
+  // Group active orders by table (exclude cancelled orders and orders with 0 active items)
   const ordersByTable = useMemo(() => {
-    const active = allOrders.filter(o => o.status !== 'BILLED');
+    const active = allOrders.filter(o => {
+      if (o.status === 'BILLED' || o.status === 'CANCELLED') return false;
+      const activeItems = (o.order_items || []).filter(it => it.status !== 'CANCELLED');
+      return activeItems.length > 0;
+    });
     const tableMap: Record<string, { table: CafeTable; orders: Order[] }> = {};
 
     for (const order of active) {
@@ -1883,19 +1943,19 @@ export default function ManagerDashboard() {
                   <div>
                     <h3 className="font-bold text-sm text-amber-400 uppercase tracking-wider flex items-center gap-2">
                       <Search className="w-4 h-4" />
-                      <span>Search Invoices</span>
+                      <span>Search Customer History &amp; Invoices</span>
                     </h3>
                     <p className="text-xs text-stone-400">
-                      Search active bills in Supabase (last 30 days) or deep archive in Google Sheets by Order ID (e.g. CF-241126-0001) or Phone (e.g. 9876543210).
+                      Search customer visit history and bills across Supabase and Google Sheets all-time archive by Order ID (e.g. ORD-241126-0001) or Phone (e.g. 8604600292).
                     </p>
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-stone-500 font-mono">
                     <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Supabase (30d)
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Supabase Live
                     </span>
                     <span>&bull;</span>
                     <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-blue-500"></span> Google Sheets Archive
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span> Google Sheets Archive (All-Time)
                     </span>
                   </div>
                 </div>
@@ -1905,7 +1965,7 @@ export default function ManagerDashboard() {
                     <Search className="w-4 h-4 text-stone-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
-                      placeholder="Enter Order ID (e.g. CF-261124-0001) or 10-digit Phone..."
+                      placeholder="Enter Order ID (e.g. ORD-241126-0001) or 10-digit Phone..."
                       value={invoiceSearchQuery}
                       onChange={e => {
                         setInvoiceSearchQuery(e.target.value);
@@ -1919,6 +1979,7 @@ export default function ManagerDashboard() {
                         onClick={() => {
                           setInvoiceSearchQuery('');
                           setSearchError(null);
+                          setCustomerHistory(null);
                         }}
                         className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-stone-300 cursor-pointer"
                         title="Clear"
@@ -1941,7 +2002,7 @@ export default function ManagerDashboard() {
                     ) : (
                       <>
                         <Search className="w-3.5 h-3.5" />
-                        <span>Search Invoice</span>
+                        <span>Search</span>
                       </>
                     )}
                   </button>
@@ -1964,6 +2025,157 @@ export default function ManagerDashboard() {
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
+                  </div>
+                )}
+
+                {/* Customer History & All Invoices Ledger */}
+                {customerHistory && (
+                  <div className="mt-4 p-4 sm:p-5 rounded-2xl bg-stone-950 border border-amber-500/40 shadow-xl space-y-4">
+                    {/* Customer Profile Banner */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-stone-800">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                          <User className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-sm sm:text-base font-bold text-white">
+                              {customerHistory.customer.name}
+                            </h4>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[11px] font-bold">
+                              {customerHistory.customer.totalVisits} {customerHistory.customer.totalVisits === 1 ? 'Visit' : 'Visits'}
+                            </span>
+                            {customerHistory.customer.freeRedeemed ? (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold flex items-center gap-1">
+                                <Gift className="w-3 h-3" />
+                                {customerHistory.customer.freeRedeemed} Free Coffee Claimed
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-stone-400 font-mono flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3.5 h-3.5 text-stone-500" />
+                              <span>{customerHistory.customer.phone}</span>
+                            </span>
+                            {customerHistory.customer.totalSpent > 0 && (
+                              <span className="text-emerald-400 font-bold">
+                                Total Spent: ₹{customerHistory.customer.totalSpent}
+                              </span>
+                            )}
+                            {customerHistory.customer.firstVisit && (
+                              <span className="text-stone-500">
+                                First Visit: {new Date(customerHistory.customer.firstVisit).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomerHistory(null);
+                          setInvoiceSearchQuery('');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer self-end sm:self-auto shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Close</span>
+                      </button>
+                    </div>
+
+                    {/* All Visits & Invoices List */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <History className="w-3.5 h-3.5" />
+                          <span>All Visits &amp; Invoices ({customerHistory.invoices.length})</span>
+                        </h5>
+                        <span className="text-[10px] text-stone-500 font-mono hidden sm:inline">
+                          All-time fetched from Supabase &amp; Google Sheets
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-stone-800">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-stone-800 text-[10px] sm:text-[11px] text-stone-400 uppercase font-bold bg-stone-900/90">
+                              <th className="py-2 px-3 font-mono">Visit #</th>
+                              <th className="py-2 px-3">Date &amp; Time</th>
+                              <th className="py-2 px-3 font-mono">Invoice #</th>
+                              <th className="py-2 px-3">Table</th>
+                              <th className="py-2 px-3">Items Ordered</th>
+                              <th className="py-2 px-3">Total Amount</th>
+                              <th className="py-2 px-3">Source</th>
+                              <th className="py-2 px-3 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-stone-800/60 font-mono">
+                            {customerHistory.invoices.map((inv, idx) => (
+                              <tr key={inv.bill.id || inv.bill.invoice_number || idx} className="hover:bg-stone-900/50 transition">
+                                <td className="py-2.5 px-3 font-bold text-amber-400">
+                                  Visit #{inv.bill.visit_count || (customerHistory.invoices.length - idx)}
+                                </td>
+                                <td className="py-2.5 px-3 text-stone-300 whitespace-nowrap font-sans text-xs">
+                                  {inv.bill.created_at
+                                    ? new Date(inv.bill.created_at).toLocaleString('en-IN', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        year: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true,
+                                      })
+                                    : 'N/A'}
+                                </td>
+                                <td className="py-2.5 px-3 font-bold text-amber-300">
+                                  {inv.bill.invoice_number}
+                                </td>
+                                <td className="py-2.5 px-3 text-stone-300 font-sans">
+                                  {inv.bill.table_number || 'Table'}
+                                </td>
+                                <td className="py-2.5 px-3 text-stone-300 font-sans max-w-[200px] truncate" title={inv.items.map(i => `${i.quantity}x ${i.item_name_en}`).join(', ')}>
+                                  {inv.items.length > 0
+                                    ? inv.items.map(i => `${i.quantity}x ${i.item_name_en}`).join(', ')
+                                    : 'Items synced'}
+                                </td>
+                                <td className="py-2.5 px-3 font-black text-white whitespace-nowrap">
+                                  ₹{inv.bill.total_amount}
+                                </td>
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      inv.source === 'supabase'
+                                        ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-blue-950/80 text-blue-400 border border-blue-500/30'
+                                    }`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${inv.source === 'supabase' ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+                                    {inv.source === 'supabase' ? 'Supabase' : 'Google Sheets'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap font-sans">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInspectedInvoice({
+                                        bill: inv.bill,
+                                        items: inv.items,
+                                        source: inv.source,
+                                      });
+                                    }}
+                                    className="py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold inline-flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                    <span>View / Print</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

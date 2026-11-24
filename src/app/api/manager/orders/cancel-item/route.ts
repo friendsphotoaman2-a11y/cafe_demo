@@ -47,6 +47,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if any active items remain in this order
+    const { data: remainingItems } = await supabaseAdmin
+      .from('order_items')
+      .select('id, status')
+      .eq('order_id', item.order_id);
+
+    const hasActiveItems = remainingItems?.some(it => it.status !== 'CANCELLED');
+    if (!hasActiveItems) {
+      // Mark entire order as CANCELLED so it is removed from active boards
+      await supabaseAdmin
+        .from('orders')
+        .update({ status: 'CANCELLED' })
+        .eq('id', item.order_id);
+    }
+
     // 3. Write to audit log (Local + Google Sheet + Supabase)
     try {
       await recordAuditLog({

@@ -7,6 +7,7 @@ export async function GET() {
     const { data: orders, error } = await supabase
       .from('orders')
       .select('*, order_items(*)')
+      .neq('status', 'CANCELLED')
       .order('created_at', { ascending: false });
 
     if (error) {
