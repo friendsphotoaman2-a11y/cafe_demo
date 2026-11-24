@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { google } from 'googleapis';
 import { Bill, OrderItem } from '@/types/database';
 import { parseSheetDate } from '@/lib/date-utils';
@@ -77,34 +78,59 @@ function resolveSpreadsheetId(customSheetId?: string | null): string | null {
 
 /**
  * Normalizes Google Service Account private key supporting all env serialization styles:
- * raw PEM, quoted PEM, escaped newlines (\n or \\n), single-line, and standard PKCS8.
+ * raw PEM, quoted PEM, escaped newlines (\n or \\n), single-line, JSON, base64-encoded PEM, and PKCS8.
  */
 export function normalizePrivateKey(rawKey: string): string {
   if (!rawKey) return '';
 
   let key = rawKey.trim();
 
-  // Strip all leading and trailing quotes (single, double, backtick, escaped quotes)
-  while (
-    (key.startsWith('"') && key.endsWith('"')) ||
-    (key.startsWith("'") && key.endsWith("'")) ||
-    (key.startsWith('`') && key.endsWith('`')) ||
-    (key.startsWith('\\"') && key.endsWith('\\"'))
-  ) {
-    if (key.startsWith('\\"') && key.endsWith('\\"')) {
-      key = key.slice(2, -2).trim();
-    } else {
-      key = key.slice(1, -1).trim();
+  // Strip leading/trailing quotes (balanced or unbalanced)
+  key = key.replace(/^["'`]+|["'`]+$/g, '').trim();
+
+  // Handle JSON-encoded key or service-account JSON string
+  if (key.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(key);
+      if (typeof parsed?.private_key === 'string') {
+        key = parsed.private_key.trim();
+      }
+    } catch {
+      // Not valid JSON, continue
+    }
+  } else if (key.startsWith('"') || key.startsWith('\\"')) {
+    try {
+      const unescaped = JSON.parse(key.startsWith('\\"') ? `"${key.slice(2, -2)}"` : key);
+      if (typeof unescaped === 'string') key = unescaped.trim();
+    } catch {
+      key = key.replace(/^["'`\\]+|["'`\\]+$/g, '').trim();
     }
   }
 
-  // Normalize all newline variants
-  key = key.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  key = key.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n');
+  // Handle base64-encoded PEM or base64-encoded service account JSON
+  if (!key.includes('-----BEGIN') && /^[A-Za-z0-9+/=\s]+$/.test(key) && key.length > 100) {
+    try {
+      const decoded = Buffer.from(key.replace(/\s+/g, ''), 'base64').toString('utf8').trim();
+      if (decoded.includes('-----BEGIN')) {
+        key = decoded;
+      } else if (decoded.startsWith('{')) {
+        const parsed = JSON.parse(decoded);
+        if (typeof parsed?.private_key === 'string') {
+          key = parsed.private_key.trim();
+        }
+      }
+    } catch {
+      // Not base64-encoded PEM/JSON
+    }
+  }
 
-  // If PEM headers are present, reliably reconstruct standard 64-char-line PEM format
-  const headerMatch = key.match(/-----BEGIN [A-Z\s]+PRIVATE KEY-----/);
-  const footerMatch = key.match(/-----END [A-Z\s]+PRIVATE KEY-----/);
+  // Normalize all newline variants (\r\n, \r, \\n, \\\n, \n)
+  key = key.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  key = key.replace(/\\+n/g, '\n');
+
+  // Reconstruct standard 64-char-line PEM format when headers exist
+  const headerMatch = key.match(/-----BEGIN [A-Z0-9\s]+PRIVATE KEY-----/);
+  const footerMatch = key.match(/-----END [A-Z0-9\s]+PRIVATE KEY-----/);
 
   if (headerMatch && footerMatch) {
     const header = headerMatch[0];
@@ -114,10 +140,8 @@ export function normalizePrivateKey(rawKey: string): string {
     const endIndex = key.indexOf(footer);
     const body = key.substring(startIndex, endIndex);
 
-    // Strip whitespace, newlines, and escaping backslashes from the base64 body
-    const cleanBase64 = body.replace(/[\s\r\n\\]/g, '');
-
-    // Split base64 into standard 64-character lines
+    // Keep only valid base64 chars in the body
+    const cleanBase64 = body.replace(/[^A-Za-z0-9+/=]/g, '');
     const chunks = cleanBase64.match(/.{1,64}/g) || [];
 
     return `${header}\n${chunks.join('\n')}\n${footer}\n`;
@@ -131,23 +155,60 @@ export function normalizePrivateKey(rawKey: string): string {
  * using the Service Account credentials from environment variables.
  */
 export function getSheetsClient() {
-  const rawEmail =
+  let rawEmail =
     process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
     process.env.GOOGLE_CLIENT_EMAIL ||
     process.env.GOOGLE_EMAIL ||
     '';
 
-  const rawKey =
+  const keySource = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+    ? 'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY'
+    : process.env.GOOGLE_PRIVATE_KEY
+    ? 'GOOGLE_PRIVATE_KEY'
+    : process.env.GOOGLE_SHEETS_PRIVATE_KEY
+    ? 'GOOGLE_SHEETS_PRIVATE_KEY'
+    : process.env.GOOGLE_CREDENTIALS_JSON
+    ? 'GOOGLE_CREDENTIALS_JSON'
+    : 'NONE';
+
+  let rawKey =
     process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ||
     process.env.GOOGLE_PRIVATE_KEY ||
     process.env.GOOGLE_SHEETS_PRIVATE_KEY ||
+    process.env.GOOGLE_CREDENTIALS_JSON ||
     '';
 
-  const clientEmail = rawEmail.trim().replace(/^["']|["']$/g, '');
+  if (rawKey.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(rawKey.trim());
+      if (!rawEmail && typeof parsed?.client_email === 'string') {
+        rawEmail = parsed.client_email;
+      }
+      if (typeof parsed?.private_key === 'string') {
+        rawKey = parsed.private_key;
+      }
+    } catch {
+      // Handled in normalizePrivateKey
+    }
+  }
+
+  const clientEmail = rawEmail.trim().replace(/^["'`]+|["'`]+$/g, '');
   const privateKey = normalizePrivateKey(rawKey);
 
   if (!clientEmail || !privateKey) {
     throw new Error('Google Service Account credentials missing in environment.');
+  }
+
+  try {
+    crypto.createPrivateKey(privateKey);
+  } catch (keyErr) {
+    const errMsg = keyErr instanceof Error ? keyErr.message : String(keyErr);
+    const hasBegin = privateKey.includes('-----BEGIN');
+    const hasEnd = privateKey.includes('-----END');
+    const lineCount = privateKey.split('\n').length;
+    throw new Error(
+      `Google Private Key decode failed (${errMsg}) [src=${keySource}, rawLen=${rawKey.length}, normLen=${privateKey.length}, hasBegin=${hasBegin}, hasEnd=${hasEnd}, lines=${lineCount}]`
+    );
   }
 
   const auth = new google.auth.JWT({
