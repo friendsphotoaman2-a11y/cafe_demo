@@ -33,8 +33,8 @@
     "itemsInCart": "in cart",
     "reviewOrder": "Review & Order",
     "addMore": "Add More Items",
-    "confirmOrder": "Confirm Order",
-    "sending": "Sending to Kitchen...",
+    "confirmOrder": "Order Now",
+    "sending": "Ordering...",
     "roundTotal": "Round Total",
     "counterBillingNotice": "Billing is done only at the counter. No payment is taken through your phone."
   },

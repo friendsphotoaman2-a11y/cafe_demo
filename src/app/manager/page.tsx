@@ -379,10 +379,10 @@ export default function ManagerDashboard() {
     window.addEventListener('offline', handleOffline);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    // Guaranteed background polling safety net (every 4 seconds)
+    // Guaranteed background polling safety net (every 2.5 seconds)
     const pollInterval = setInterval(() => {
       loadAllData();
-    }, 4000);
+    }, 2500);
 
     // Load initial storage stats
     loadStorageStats();
@@ -567,6 +567,17 @@ export default function ManagerDashboard() {
   }
 
   async function handleCloseSession(sessionId: string) {
+    const prevSessions = sessions;
+    setSessions(prev => {
+      const updated = { ...prev };
+      for (const [tId, sess] of Object.entries(updated)) {
+        if (sess.id === sessionId) {
+          delete updated[tId];
+        }
+      }
+      return updated;
+    });
+
     try {
       const res = await fetch(apiUrl('/api/manager/session/close'), {
         method: 'POST',
@@ -575,25 +586,22 @@ export default function ManagerDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        setSessions(prev => {
-          const updated = { ...prev };
-          for (const [tId, sess] of Object.entries(updated)) {
-            if (sess.id === sessionId) {
-              delete updated[tId];
-            }
-          }
-          return updated;
-        });
-        await loadAllData();
+        loadAllData().catch(() => {});
       } else {
+        setSessions(prevSessions);
         alert(data.message || 'Could not close session');
       }
     } catch {
+      setSessions(prevSessions);
       alert('Error closing table session.');
     }
   }
 
   async function handleResolveWaiterCall(callId: string) {
+    const prevCalls = waiterCalls;
+    setWaiterCalls(prev =>
+      prev.map(c => (c.id === callId ? { ...c, status: 'RESOLVED' } : c))
+    );
     try {
       const res = await fetch(apiUrl('/api/manager/waiter-calls/resolve'), {
         method: 'POST',
@@ -601,12 +609,12 @@ export default function ManagerDashboard() {
         body: JSON.stringify({ call_id: callId }),
       });
       const data = await res.json();
-      if (data.success) {
-        setWaiterCalls(prev =>
-          prev.map(c => (c.id === callId ? { ...c, status: 'RESOLVED' } : c))
-        );
+      if (!data.success) {
+        setWaiterCalls(prevCalls);
+        alert('Could not resolve call.');
       }
     } catch {
+      setWaiterCalls(prevCalls);
       alert('Could not resolve call.');
     }
   }
@@ -705,6 +713,10 @@ export default function ManagerDashboard() {
   }
 
   async function handleSetItemAvailability(itemId: string, newAvailable: boolean) {
+    const prevItems = menuItems;
+    setMenuItems(prev =>
+      prev.map(it => (it.id === itemId ? { ...it, is_available: newAvailable } : it))
+    );
     try {
       const res = await fetch(apiUrl('/api/manager/menu/set-availability'), {
         method: 'POST',
@@ -712,14 +724,12 @@ export default function ManagerDashboard() {
         body: JSON.stringify({ item_id: itemId, is_available: newAvailable }),
       });
       const data = await res.json();
-      if (data.success) {
-        setMenuItems(prev =>
-          prev.map(it => (it.id === itemId ? { ...it, is_available: newAvailable } : it))
-        );
-      } else {
+      if (!data.success) {
+        setMenuItems(prevItems);
         alert(data.message || 'Failed to update availability.');
       }
     } catch {
+      setMenuItems(prevItems);
       alert('Error updating availability.');
     }
   }

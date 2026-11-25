@@ -580,7 +580,7 @@ export function TableClient({
       fetchOrders();
     }
 
-    const pollInterval = setInterval(fetchOrders, 5000);
+    const pollInterval = setInterval(fetchOrders, 2500);
 
     const handleOnline = () => {
       setRealtimeConnected(true);
@@ -664,21 +664,70 @@ export function TableClient({
 
   const grandTotal = cartTotal + gstAmount;
 
-  // Submit Order
+  // Submit Order (Instant Optimistic UI with automatic server reconciliation & rollback)
   async function handlePlaceOrder() {
-    if ((!sessionToken && !sessionId) || cart.length === 0) return;
+    if ((!sessionToken && !sessionId) || cart.length === 0 || orderingInProgress) return;
 
-    triggerHaptic([40, 60, 40]);
+    const cartSnapshot = [...cart];
+    const itemsPayload = cartSnapshot.map(c => ({
+      item_id: c.item.id,
+      quantity: c.quantity,
+      notes: (c.notes || '').trim().slice(0, 150),
+    }));
+
+    const optimisticOrderId = `opt-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const optimisticOrder: Order = {
+      id: optimisticOrderId,
+      session_id: sessionId || '',
+      table_id: '',
+      device_id: deviceId,
+      status: 'PENDING',
+      notes: null,
+      created_at: nowIso,
+      order_items: cartSnapshot.map((c, idx) => ({
+        id: `${optimisticOrderId}-${idx}`,
+        order_id: optimisticOrderId,
+        item_id: c.item.id,
+        item_name_en: c.item.name_en,
+        item_name_hi: c.item.name_hi,
+        price_per_unit: c.item.price,
+        quantity: c.quantity,
+        item_notes: (c.notes || '').trim().slice(0, 150) || null,
+        status: 'PENDING',
+        created_at: nowIso,
+      })),
+    };
+
+    // Instant UI feedback — 0ms wait
+    triggerHaptic([60, 50, 100]);
     setOrderingInProgress(true);
     setCartError(null);
+    setTableOrders(prev => [optimisticOrder, ...prev]);
+    setCart([]);
+    try {
+      sessionStorage.removeItem(`cafe_cart_${tableCode}`);
+    } catch {}
+    setIsCartOpen(false);
+    setActiveTab('orders');
 
     try {
-      const itemsPayload = cart.map(c => ({
-        item_id: c.item.id,
-        quantity: c.quantity,
-        notes: (c.notes || '').trim().slice(0, 150),
-      }));
+      confetti({
+        particleCount: 55,
+        spread: 65,
+        origin: { y: 0.72 },
+        colors: ['#f59e0b', '#10b981', '#fbbf24', '#ffffff'],
+      });
+    } catch {}
 
+    setOrderSuccessMessage(
+      language === 'hi'
+        ? 'ऑर्डर हो गया! रसोई में तैयारी शुरू हो गई है।'
+        : 'Order placed! Your order is confirmed.'
+    );
+    setTimeout(() => setOrderSuccessMessage(null), 3500);
+
+    try {
       const res = await fetch(apiUrl('/api/table/order'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -693,6 +742,13 @@ export function TableClient({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        // Rollback optimistic order and restore cart
+        setTableOrders(prev => prev.filter(o => o.id !== optimisticOrderId));
+        setOrderSuccessMessage(null);
+        setCart(cartSnapshot);
+        setActiveTab('menu');
+        setIsCartOpen(true);
+
         const msg = String(data.message || '');
         const isSessionClosed =
           msg.toLowerCase().includes('session') &&
@@ -706,14 +762,14 @@ export function TableClient({
           clearTableSession(tableCode);
           setCartError(
             language === 'hi'
-              ? 'टेबल सत्र समाप्त हो गया था। कृपया पुनः प्रयास करें।'
-              : 'Session ended or refreshed. Please tap Place Order again.'
+              ? 'टेबल सत्र समाप्त हो गया था। कृपया फिर से Order Now दबाएं।'
+              : 'Session refreshed. Please tap Order Now again.'
           );
-          await checkExistingSession();
+          await checkExistingSession(false);
         } else if (isUnavailable) {
           setCartError(
             language === 'hi'
-              ? 'कुछ आइटम आज उपलब्ध नहीं हैं। मेनू को अपडेट कर दिया गया है।'
+              ? 'कुछ आइटम आज उपलब्ध नहीं हैं। मेनू अपडेट कर दिया गया है।'
               : msg || 'One or more items became unavailable today. Menu has been refreshed.'
           );
           await refreshMenu();
@@ -722,31 +778,15 @@ export function TableClient({
           await refreshMenu();
         }
       } else {
-        triggerHaptic([60, 50, 100]);
-        setCart([]);
-        sessionStorage.removeItem(`cafe_cart_${tableCode}`);
-        setIsCartOpen(false);
-        setCartError(null);
-        setActiveTab('orders');
-
-        try {
-          confetti({
-            particleCount: 65,
-            spread: 70,
-            origin: { y: 0.72 },
-            colors: ['#f59e0b', '#10b981', '#fbbf24', '#ffffff'],
-          });
-        } catch {}
-
-        setOrderSuccessMessage(
-          language === 'hi'
-            ? 'ऑर्डर सफलतापूर्वक भेजा गया! किचन में तैयारी शुरू हो गई है।'
-            : 'Order placed! Sent straight to the kitchen.'
-        );
+        // Reconcile optimistic entry with authoritative DB order
         fetchOrders();
-        setTimeout(() => setOrderSuccessMessage(null), 4500);
       }
     } catch {
+      setTableOrders(prev => prev.filter(o => o.id !== optimisticOrderId));
+      setOrderSuccessMessage(null);
+      setCart(cartSnapshot);
+      setActiveTab('menu');
+      setIsCartOpen(true);
       setCartError(
         language === 'hi'
           ? 'नेटवर्क या सर्वर त्रुटि। कृपया पुनः प्रयास करें।'
@@ -1253,6 +1293,7 @@ export function TableClient({
             onClick={() => {
               triggerHaptic(20);
               setActiveTab('orders');
+              fetchOrders();
             }}
             className={`flex-1 min-h-[40px] py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer touch-manipulation ${
               activeTab === 'orders'
@@ -1485,8 +1526,7 @@ export function TableClient({
                   return (
                     <div
                       key={item.id}
-                      style={{ animationDelay: `${Math.min(idx * 35, 240)}ms` }}
-                      className={`bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs transition-all relative overflow-hidden animate-fade-in-up ${
+                      className={`bg-white rounded-2xl border p-3 flex gap-3 shadow-2xs transition-colors duration-150 relative overflow-hidden ${
                         !isAvailable
                           ? 'opacity-65 grayscale-[35%] bg-stone-50 border-stone-200 border-dashed'
                           : cartQty > 0
@@ -1850,15 +1890,15 @@ export function TableClient({
                         {orderingInProgress ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>{language === 'hi' ? 'भेजा जा रहा है...' : 'Sending to Kitchen...'}</span>
+                            <span>{language === 'hi' ? 'ऑर्डर हो रहा है...' : 'Ordering...'}</span>
                           </>
                         ) : (
                           <>
                             <Sparkles className="w-4 h-4" />
                             <span>
                               {language === 'hi'
-                                ? `ऑर्डर भेजें (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`
-                                : `Place Order (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`}
+                                ? `अभी ऑर्डर करें (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`
+                                : `Order Now (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`}
                             </span>
                           </>
                         )}
@@ -2335,15 +2375,15 @@ export function TableClient({
                 {orderingInProgress ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{language === 'hi' ? 'रसोई में भेजा जा रहा है...' : 'Sending to Kitchen...'}</span>
+                    <span>{language === 'hi' ? 'ऑर्डर हो रहा है...' : 'Ordering...'}</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
                     <span>
                       {language === 'hi'
-                        ? `ऑर्डर भेजें (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`
-                        : `Place Order (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`}
+                        ? `अभी ऑर्डर करें (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`
+                        : `Order Now (₹${taxEnabled ? grandTotal.toFixed(2) : cartTotal})`}
                     </span>
                   </>
                 )}
@@ -2379,6 +2419,7 @@ export function TableClient({
               onClick={() => {
                 triggerHaptic(30);
                 setIsLiveOrdersOpen(true);
+                fetchOrders();
               }}
               className="min-h-[44px] flex items-center gap-2 py-2.5 px-4 rounded-full bg-stone-900/95 hover:bg-stone-900 text-amber-400 font-extrabold text-xs shadow-xl shadow-stone-950/25 border border-amber-500/30 active:scale-95 transition-all cursor-pointer touch-manipulation"
               title="View Table Live Orders"

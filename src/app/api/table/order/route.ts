@@ -26,35 +26,6 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 0. Defensive Check: Verify that the session is strictly ACTIVE (Vector 3: Order with closed session prevention)
-    let sessionRecord: { id: string; status: string; locked_until: string | null } | null = null;
-    if (session_id) {
-      const { data } = await supabaseAdmin
-        .from('table_sessions')
-        .select('id, status, locked_until')
-        .eq('id', session_id)
-        .maybeSingle();
-      sessionRecord = data;
-    } else if (session_token) {
-      const { data } = await supabaseAdmin
-        .from('table_sessions')
-        .select('id, status, locked_until')
-        .or(`session_token.eq.${session_token},id.eq.${session_token}`)
-        .maybeSingle();
-      sessionRecord = data;
-    }
-
-    if (!sessionRecord || sessionRecord.status !== 'ACTIVE') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'SESSION_CLOSED',
-          message: 'This table session has ended or is not active. Please ask the manager or scan the table QR code.',
-        },
-        { status: 403 }
-      );
-    }
-
     // STRICT: Sanitize payload to guarantee client NEVER sends prices
     const sanitizedItems = items.map((it: { item_id: string; quantity: number; notes?: string }) => ({
       item_id: String(it.item_id),
@@ -62,35 +33,61 @@ export async function POST(req: NextRequest) {
       notes: it.notes ? String(it.notes).trim().slice(0, 150) : null,
     }));
 
-    let rpcData: Record<string, unknown> | null = null;
-    let rpcError: { message?: string } | null = null;
+    // Resolve session_token if only session_id was supplied; otherwise call place_table_order directly in 1 DB hop
+    let resolvedToken = session_token ? String(session_token).trim() : '';
+    if (!resolvedToken && session_id) {
+      const { data: sessRow } = await supabaseAdmin
+        .from('table_sessions')
+        .select('session_token, status')
+        .eq('id', session_id)
+        .maybeSingle();
 
-    // Call place_table_order RPC directly (server-verified DB prices & availability)
+      if (!sessRow || sessRow.status !== 'ACTIVE') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'SESSION_CLOSED',
+            message: 'This table session has ended or is not active. Please ask the manager or scan the table QR code.',
+          },
+          { status: 403 }
+        );
+      }
+      resolvedToken = String(sessRow.session_token);
+    }
+
     const { data: ptoData, error: ptoErr } = await supabaseAdmin.rpc('place_table_order', {
-      p_session_token: session_token || session_id,
+      p_session_token: resolvedToken,
       p_device_id: device_id,
       p_notes: notes,
       p_items: sanitizedItems,
     });
 
-    if (!ptoErr && ptoData) {
-      rpcData = ptoData as Record<string, unknown>;
-    } else if (ptoErr) {
-      rpcError = ptoErr;
-    }
-
-    if (rpcError && !rpcData) {
-      console.error('Error placing table order:', rpcError);
+    if (ptoErr || !ptoData) {
+      console.error('Error placing table order:', ptoErr);
       return NextResponse.json(
         {
           success: false,
-          message: rpcError.message || 'Failed to place order. An item may be unavailable or session closed.',
+          message: ptoErr?.message || 'Failed to place order. An item may be unavailable or session closed.',
         },
         { status: 400 }
       );
     }
 
-    return NextResponse.json(rpcData || { success: true });
+    const rpcData = ptoData as Record<string, unknown>;
+    if (rpcData.success === false) {
+      const msg = String(rpcData.message || '');
+      const isClosed = msg.toLowerCase().includes('session') || msg.toLowerCase().includes('closed');
+      return NextResponse.json(
+        {
+          success: false,
+          ...(isClosed ? { error: 'SESSION_CLOSED' } : {}),
+          message: msg || 'This table session has ended or is not active.',
+        },
+        { status: isClosed ? 403 : 400 }
+      );
+    }
+
+    return NextResponse.json(rpcData);
   } catch (err: unknown) {
     console.error('Order API error:', err);
     return NextResponse.json(
