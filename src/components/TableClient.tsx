@@ -94,6 +94,14 @@ function clearTableSession(tblCode: string) {
   } catch {}
 }
 
+function getThumbUrl(url: string): string {
+  if (!url) return url;
+  if (url.includes('images.unsplash.com')) {
+    return url.replace(/([?&])w=\d+/, '$1w=280').replace(/([?&])q=\d+/, '$1q=70');
+  }
+  return url;
+}
+
 export function TableClient({
   tableCode,
   initialAccess,
@@ -363,20 +371,19 @@ export function TableClient({
         return;
       }
 
-      // Brief emerald unlock celebration before opening menu
+      // Instant unlock without artificial delay
       triggerHaptic([35, 35, 65]);
-      setPinUnlockSuccess(true);
-
       setSessionToken(data.session_token);
       setSessionId(data.session_id);
       const tableNum = data.table_number || `Table ${tableCode}`;
       setTableNumber(tableNum);
+      if (Array.isArray(data.orders)) {
+        ordersPreloadedOnUnlockRef.current = data.session_id;
+        setTableOrders(data.orders as Order[]);
+      }
       persistTableSession(tableCode, data.session_token, data.session_id, tableNum);
-
-      setTimeout(() => {
-        setPinUnlockSuccess(false);
-        setIsPinVerified(true);
-      }, 280);
+      setPinUnlockSuccess(false);
+      setIsPinVerified(true);
     } catch (err: unknown) {
       triggerHaptic([60, 40, 60]);
       if (err instanceof Error && err.name === 'AbortError') {
@@ -560,12 +567,16 @@ export function TableClient({
     }
   }, [sessionId, sessionToken, tableCode]);
 
-  // Poll Table Shared Orders & Session Status (skips immediate fetch if SSR already provided orders)
+  const ordersPreloadedOnUnlockRef = useRef<string | null>(null);
+
+  // Poll Table Shared Orders & Session Status (skips immediate fetch if SSR or verify-pin already provided orders)
   useEffect(() => {
     if (!isPinVerified || !sessionId) return;
 
-    // Only fetch immediately if user just unlocked via PIN (not already preloaded on SSR)
-    if (!initialGranted || initialGranted.session_id !== sessionId) {
+    const alreadyPreloaded =
+      (initialGranted && initialGranted.session_id === sessionId) ||
+      ordersPreloadedOnUnlockRef.current === sessionId;
+    if (!alreadyPreloaded) {
       fetchOrders();
     }
 
@@ -1498,9 +1509,10 @@ export function TableClient({
                         {item.image_url && !failedImages[item.id] ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={item.image_url}
+                            src={getThumbUrl(item.image_url)}
                             alt={primaryName}
-                            loading="lazy"
+                            loading={idx < 6 ? 'eager' : 'lazy'}
+                            decoding="async"
                             onError={() => setFailedImages(prev => ({ ...prev, [item.id]: true }))}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />

@@ -48,8 +48,14 @@ export async function POST(req: NextRequest) {
 
     // If PIN is OFF (or saved session is already valid), grant access without checking PIN
     if (accessResult.access === 'granted') {
+      const supabaseAdmin = createAdminClient();
+      const { data: orders } = await supabaseAdmin
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('session_id', accessResult.session_id)
+        .order('created_at', { ascending: false });
       return NextResponse.json(
-        { success: true, ...accessResult },
+        { success: true, ...accessResult, orders: orders || [] },
         { status: 200, headers: NO_CACHE_HEADERS }
       );
     }
@@ -89,6 +95,13 @@ export async function POST(req: NextRequest) {
     // Standardize error message when PIN/table is invalid
     if (!rpcData.success && !rpcData.locked) {
       rpcData.message = 'Invalid PIN. Please talk to the manager and get your PIN again.';
+    } else if (rpcData.success && rpcData.session_id) {
+      const { data: orders } = await supabaseAdmin
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('session_id', String(rpcData.session_id))
+        .order('created_at', { ascending: false });
+      rpcData.orders = orders || [];
     }
 
     return NextResponse.json(rpcData, { headers: NO_CACHE_HEADERS });
