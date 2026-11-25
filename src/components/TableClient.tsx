@@ -860,19 +860,34 @@ export function TableClient({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic(30);
-              setIsSessionEnded(false);
-              setPin('');
-              setPinError(null);
-              checkExistingSession();
-            }}
-            className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-[0.98] text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer touch-manipulation"
-          >
-            {language === 'hi' ? 'नया सत्र शुरू करें' : 'Start Fresh Session'}
-          </button>
+          <div className="w-full pt-4 border-t border-stone-100 space-y-3">
+            <div className="space-y-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-stone-900 text-amber-400 text-[10px] font-black tracking-wider uppercase">
+                <Sparkles className="w-3 h-3" />
+                <span>
+                  {language === 'hi'
+                    ? 'Made by THE BUSINESS WORK'
+                    : 'Made by THE BUSINESS WORK'}
+                </span>
+              </span>
+              <p className="text-xs text-stone-500 font-medium leading-relaxed px-2">
+                {language === 'hi'
+                  ? 'अपने बिज़नेस के लिए ऐसा स्मार्ट QR ऑर्डरिंग और ऑटोमेशन बनवाने के लिए संपर्क करें।'
+                  : 'Want smart QR ordering & business automation for your cafe or business? Contact us.'}
+              </p>
+            </div>
+
+            <a
+              href="https://www.thebusinesswork.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => triggerHaptic(30)}
+              className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-linear-to-r from-stone-900 via-stone-800 to-stone-900 hover:from-stone-800 hover:to-stone-950 active:scale-[0.98] text-amber-400 font-black text-sm shadow-lg shadow-stone-900/20 border border-amber-500/30 transition flex items-center justify-center gap-2 cursor-pointer touch-manipulation"
+            >
+              <span>THE BUSINESS WORK</span>
+              <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
         </div>
       </div>
     );
