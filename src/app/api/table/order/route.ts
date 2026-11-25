@@ -65,32 +65,18 @@ export async function POST(req: NextRequest) {
     let rpcData: Record<string, unknown> | null = null;
     let rpcError: { message?: string } | null = null;
 
-    // 1. Try place_order RPC if available (taking session_id, items)
-    if (session_id) {
-      const { data: poData, error: poErr } = await supabaseAdmin.rpc('place_order', {
-        session_id: session_id,
-        items: sanitizedItems,
-      });
+    // Call place_table_order RPC directly (server-verified DB prices & availability)
+    const { data: ptoData, error: ptoErr } = await supabaseAdmin.rpc('place_table_order', {
+      p_session_token: session_token || session_id,
+      p_device_id: device_id,
+      p_notes: notes,
+      p_items: sanitizedItems,
+    });
 
-      if (!poErr && poData) {
-        rpcData = poData as Record<string, unknown>;
-      }
-    }
-
-    // 2. Fallback to place_table_order RPC
-    if (!rpcData) {
-      const { data: ptoData, error: ptoErr } = await supabaseAdmin.rpc('place_table_order', {
-        p_session_token: session_token || session_id,
-        p_device_id: device_id,
-        p_notes: notes,
-        p_items: sanitizedItems,
-      });
-
-      if (!ptoErr && ptoData) {
-        rpcData = ptoData as Record<string, unknown>;
-      } else if (ptoErr) {
-        rpcError = ptoErr;
-      }
+    if (!ptoErr && ptoData) {
+      rpcData = ptoData as Record<string, unknown>;
+    } else if (ptoErr) {
+      rpcError = ptoErr;
     }
 
     if (rpcError && !rpcData) {

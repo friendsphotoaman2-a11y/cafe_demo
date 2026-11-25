@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiUrl } from '@/lib/base-path';
 import { Bell, X, CheckCircle2, Loader2, Sparkles, Clock } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
@@ -8,9 +8,12 @@ import { useTranslation } from '@/lib/i18n';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  sessionToken: string;
+  sessionToken: string | null;
   sessionId?: string | null;
+  tableCode?: string;
   tableNumber: string;
+  onSessionRefreshed?: (session: { session_id: string; session_token: string }) => void;
+  onSessionEnded?: () => void;
 }
 
 /**
@@ -22,7 +25,10 @@ export function CallWaiterModal({
   onClose,
   sessionToken,
   sessionId,
+  tableCode,
   tableNumber,
+  onSessionRefreshed,
+  onSessionEnded,
 }: Props) {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,6 +37,27 @@ export function CallWaiterModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [isCooldown, setIsCooldown] = useState(false);
   const { language } = useTranslation();
+  const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset transient feedback whenever modal opens and clean up any pending timer
+  useEffect(() => {
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
+    }
+    if (isOpen) {
+      setErrorMsg('');
+      setIsCooldown(false);
+      setSuccess(false);
+      setLoading(false);
+    }
+    return () => {
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -58,25 +85,40 @@ export function CallWaiterModal({
   };
 
   async function handleCallWaiter(customNote?: string) {
+    if (loading) return;
     triggerHaptic(50);
     setLoading(true);
     setErrorMsg('');
     setIsCooldown(false);
 
     const finalNote = customNote !== undefined ? customNote : note;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       const res = await fetch(apiUrl('/api/table/call-waiter'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: sessionId,
-          session_token: sessionToken,
+          session_id: sessionId || undefined,
+          session_token: sessionToken || undefined,
+          table_code: tableCode || undefined,
           note: finalNote.trim().slice(0, 100) || undefined,
         }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
+
+      if (data.refreshed_session && onSessionRefreshed) {
+        onSessionRefreshed(data.refreshed_session);
+      }
+
+      if (data.session_closed && onSessionEnded) {
+        onClose();
+        onSessionEnded();
+        return;
+      }
 
       if (!res.ok || !data.success) {
         if (data.cooldown) {
@@ -99,20 +141,29 @@ export function CallWaiterModal({
         setSuccessMessage(
           language === 'hi' ? 'वेटर आपकी टेबल की तरफ आ रहा है!' : 'Waiter is on the way!'
         );
-        setTimeout(() => {
+        autoCloseTimerRef.current = setTimeout(() => {
           setSuccess(false);
           setNote('');
           setErrorMsg('');
           onClose();
-        }, 2200);
+        }, 2000);
       }
-    } catch {
-      setErrorMsg(
-        language === 'hi'
-          ? 'नेटवर्क त्रुटि। कृपया सीधे वेटर को बुलाएं।'
-          : 'Network error. Please wave down staff directly.'
-      );
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setErrorMsg(
+          language === 'hi'
+            ? 'कनेक्शन धीमा है। कृपया पुनः प्रयास करें।'
+            : 'Request timed out. Please tap the bell again.'
+        );
+      } else {
+        setErrorMsg(
+          language === 'hi'
+            ? 'नेटवर्क त्रुटि। कृपया सीधे वेटर को बुलाएं।'
+            : 'Network error. Please wave down staff directly.'
+        );
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }

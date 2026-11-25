@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { invalidateMenuCache } from '@/lib/cafe-cache';
 
 /**
  * Scheduled Cron Function: Resets all menu items to is_available = true
@@ -21,6 +22,7 @@ export async function GET() {
       console.error('Error resetting menu availability:', error);
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     const resetCount = data ? data.length : 0;
 

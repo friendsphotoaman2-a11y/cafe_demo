@@ -62,12 +62,22 @@ export async function resolveTableAccess(
 
   const supabaseAdmin = createAdminClient();
 
-  // 1. Look up table by table_code
-  const { data: table, error: tableErr } = await supabaseAdmin
-    .from('cafe_tables')
-    .select('id, table_number, table_code, pin_override')
-    .ilike('table_code', tableCode)
-    .maybeSingle();
+  // 1 & 2. Look up table and global PIN settings in parallel
+  const [
+    { data: table, error: tableErr },
+    { data: settingsRow, error: settingsErr },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('cafe_tables')
+      .select('id, table_number, table_code, pin_override')
+      .ilike('table_code', tableCode)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('manager_settings')
+      .select('require_pin, cafe_tagline')
+      .eq('id', 1)
+      .maybeSingle(),
+  ]);
 
   if (tableErr) {
     console.error('[resolveTableAccess] Error querying cafe_tables:', tableErr);
@@ -77,13 +87,6 @@ export async function resolveTableAccess(
   if (!table) {
     return { access: 'not_found', message: 'Table not found' };
   }
-
-  // 2. Read global toggle from manager_settings (service role)
-  const { data: settingsRow, error: settingsErr } = await supabaseAdmin
-    .from('manager_settings')
-    .select('require_pin, cafe_tagline')
-    .eq('id', 1)
-    .maybeSingle();
 
   if (settingsErr) {
     console.error('[resolveTableAccess] Failed to read manager_settings:', settingsErr);

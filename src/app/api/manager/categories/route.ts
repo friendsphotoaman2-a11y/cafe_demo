@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyManagerAuth } from '@/lib/auth-guard';
+import { invalidateMenuCache } from '@/lib/cafe-cache';
 
 // POST: Add new category
 export async function POST(req: NextRequest) {
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     return NextResponse.json({ success: true, category: data });
   } catch (err: unknown) {
@@ -71,6 +73,7 @@ export async function PUT(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     return NextResponse.json({ success: true, category: data });
   } catch (err: unknown) {
@@ -109,6 +112,7 @@ export async function DELETE(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     return NextResponse.json({ success: true, message: 'Category deleted successfully.' });
   } catch (err: unknown) {

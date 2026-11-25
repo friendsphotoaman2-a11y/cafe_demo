@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import {
@@ -224,142 +224,95 @@ export default function ManagerDashboard() {
   // 1. Authenticate & Authorize Manager
   useEffect(() => {
     async function verifyAuth() {
+      const isDevMode =
+        sessionStorage.getItem('cafe_manager_dev_mode') === 'true' ||
+        document.cookie.includes('cafe_manager_dev_mode=true');
+
+      if (isDevMode) {
+        setManagerEmail('developer@local (Dev Mode)');
+        return;
+      }
+
       const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const isDevMode = sessionStorage.getItem('cafe_manager_dev_mode') === 'true';
-
-      if (!user && !isDevMode) {
+      if (!user) {
         router.replace('/manager/login');
         return;
       }
 
-      if (user) {
-        setManagerEmail(user.email ?? 'Manager');
+      setManagerEmail(user.email ?? 'Manager');
 
-        // Server check for staff_emails / is_manager()
-        try {
-          const res = await fetch(apiUrl('/api/manager/auth/check'));
-          const data = await res.json();
-          if (!data.allowed && !isDevMode) {
-            await supabase.auth.signOut();
-            router.replace('/manager/login?error=not_allowed');
-            return;
-          }
-        } catch {
-          // Continue if offline dev mode
+      // Server check for staff_emails / is_manager()
+      try {
+        const res = await fetch(apiUrl('/api/manager/auth/check'));
+        const data = await res.json();
+        if (!data.allowed) {
+          await supabase.auth.signOut();
+          router.replace('/manager/login?error=not_allowed');
+          return;
         }
-      } else if (isDevMode) {
-        setManagerEmail('developer@local (Dev Mode)');
+      } catch {
+        // Continue on transient network error
       }
     }
 
     verifyAuth();
   }, [router]);
 
-  // 2. Fetch all initial data
+  const dashboardInflightRef = useRef(false);
+  const seenCallIdsRef = useRef<Set<string>>(new Set());
+  const seenOrderIdsRef = useRef<Set<string>>(new Set());
+  const initialDataLoadedRef = useRef(false);
+
+  // 2. Fetch all initial data via single parallelized server endpoint
   const loadAllData = useCallback(async () => {
-    const supabase = createClient();
-
-    // Tables
-    const { data: tblData } = await supabase.from('cafe_tables').select('*').order('table_number');
-    if (tblData) setTables(tblData);
-
-    // Active Sessions
-    const { data: sessData } = await supabase
-      .from('table_sessions')
-      .select('*')
-      .eq('status', 'ACTIVE');
-    if (sessData) {
-      const sessMap: Record<string, TableSession> = {};
-      sessData.forEach(s => {
-        sessMap[s.table_id] = s as TableSession;
-      });
-      setSessions(sessMap);
-    }
-
-    // Orders with items (fetch via API with admin fallback, with chime on new arrivals)
+    if (dashboardInflightRef.current) return;
+    dashboardInflightRef.current = true;
     try {
-      const ordRes = await fetch(apiUrl('/api/manager/orders'));
-      const ordJson = await ordRes.json();
-      if (ordJson.success && ordJson.orders) {
-        setAllOrders(prev => {
-          if (prev.length > 0 && ordJson.orders.length > prev.length) {
+      const res = await fetch(apiUrl('/api/manager/dashboard'), { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data.success) return;
+
+      if (Array.isArray(data.tables)) setTables(data.tables);
+      if (data.sessions && typeof data.sessions === 'object') setSessions(data.sessions);
+      if (Array.isArray(data.menuItems)) setMenuItems(data.menuItems);
+      if (Array.isArray(data.categories)) setCategories(data.categories);
+      if (data.settings) setSettings(data.settings as ManagerSettings);
+
+      if (Array.isArray(data.orders)) {
+        const incomingOrders = data.orders as Order[];
+        if (initialDataLoadedRef.current) {
+          const hasNewOrder = incomingOrders.some(o => !seenOrderIdsRef.current.has(o.id));
+          if (hasNewOrder) {
             playWaiterCallChime();
           }
-          return ordJson.orders as Order[];
-        });
-      } else {
-        const { data: ordData } = await supabase
-          .from('orders')
-          .select('*, order_items(*)')
-          .order('created_at', { ascending: false });
-        if (ordData) {
-          setAllOrders(prev => {
-            if (prev.length > 0 && ordData.length > prev.length) {
-              playWaiterCallChime();
-            }
-            return ordData as Order[];
-          });
         }
+        seenOrderIdsRef.current = new Set(incomingOrders.map(o => o.id));
+        setAllOrders(incomingOrders);
       }
-    } catch {
-      const { data: ordData } = await supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .order('created_at', { ascending: false });
-      if (ordData) {
-        setAllOrders(prev => {
-          if (prev.length > 0 && ordData.length > prev.length) {
+
+      if (Array.isArray(data.waiterCalls)) {
+        const incomingCalls = data.waiterCalls as WaiterCall[];
+        if (initialDataLoadedRef.current) {
+          const hasNewPendingCall = incomingCalls.some(
+            c => c.status === 'PENDING' && !seenCallIdsRef.current.has(c.id)
+          );
+          if (hasNewPendingCall) {
             playWaiterCallChime();
           }
-          return ordData as Order[];
-        });
+        }
+        seenCallIdsRef.current = new Set(incomingCalls.map(c => c.id));
+        setWaiterCalls(incomingCalls);
       }
-    }
 
-    // Menu items
-    const { data: itmData } = await supabase
-      .from('menu_items')
-      .select('*')
-      .order('name_en', { ascending: true });
-    if (itmData) setMenuItems(itmData);
-
-    // Categories
-    const { data: catData } = await supabase
-      .from('categories')
-      .select('*')
-      .order('display_order', { ascending: true });
-    if (catData) setCategories(catData);
-
-    // Waiter calls
-    const { data: callData } = await supabase
-      .from('waiter_calls')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    if (callData) setWaiterCalls(callData as WaiterCall[]);
-
-    // Bills now live exclusively in Google Sheets — no Supabase bills fetch
-
-    // Settings
-    try {
-      const setRes = await fetch(apiUrl('/api/manager/settings'));
-      const setData = await setRes.json();
-      if (setData.success && setData.settings) {
-        setSettings(setData.settings);
-      } else {
-        const { data: setRow } = await supabase
-          .from('manager_settings')
-          .select('*')
-          .eq('id', 1)
-          .maybeSingle();
-        if (setRow) setSettings(setRow as ManagerSettings);
-      }
+      initialDataLoadedRef.current = true;
     } catch {
-      // Ignore network glitch
+      // Ignore transient network glitches; next poll or realtime will recover
+    } finally {
+      dashboardInflightRef.current = false;
     }
   }, []);
 
@@ -377,7 +330,8 @@ export default function ManagerDashboard() {
         payload => {
           if (payload.eventType === 'INSERT') {
             const newCall = payload.new as WaiterCall;
-            setWaiterCalls(prev => [newCall, ...prev]);
+            seenCallIdsRef.current.add(newCall.id);
+            setWaiterCalls(prev => (prev.some(c => c.id === newCall.id) ? prev : [newCall, ...prev]));
             playWaiterCallChime();
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as WaiterCall;

@@ -18,35 +18,21 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 1. Try close_session RPC
+    // 1. Try close_table_session RPC directly
     if (session_id) {
       try {
-        const { error: err1 } = await supabaseAdmin.rpc('close_session', {
+        const { error: rpcErr } = await supabaseAdmin.rpc('close_table_session', {
           p_session_id: session_id,
         });
-        if (!err1) {
+        if (!rpcErr) {
           return NextResponse.json({ success: true });
         }
       } catch {
-        // Continue
+        // Fallback to direct update
       }
     }
 
-    // 2. Try close_table_session RPC
-    if (session_id) {
-      try {
-        const { error: err2 } = await supabaseAdmin.rpc('close_table_session', {
-          p_session_id: session_id,
-        });
-        if (!err2) {
-          return NextResponse.json({ success: true });
-        }
-      } catch {
-        // Continue
-      }
-    }
-
-    // 3. Direct database update fallback
+    // 2. Direct database update fallback
     let query = supabaseAdmin
       .from('table_sessions')
       .update({

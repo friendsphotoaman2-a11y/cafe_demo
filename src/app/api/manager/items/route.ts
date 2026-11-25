@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { verifyManagerAuth } from '@/lib/auth-guard';
+import { invalidateMenuCache } from '@/lib/cafe-cache';
 
 // POST: Add new menu item
 export async function POST(req: NextRequest) {
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     return NextResponse.json({ success: true, item: data });
   } catch (err: unknown) {
@@ -137,6 +139,7 @@ export async function PUT(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     // If image replaced, remove old photo from Supabase Storage
     if (
@@ -218,6 +221,7 @@ export async function DELETE(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     // 3. Remove image from Supabase Storage if present
     if (itemToDelete?.image_url && itemToDelete.image_url.includes('/menu-images/')) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { verifyManagerAuth } from '@/lib/auth-guard';
+import { invalidateMenuCache } from '@/lib/cafe-cache';
 
 export async function POST(req: NextRequest) {
   const auth = await verifyManagerAuth(req);
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
+    invalidateMenuCache();
 
     // Record Audit Log
     try {

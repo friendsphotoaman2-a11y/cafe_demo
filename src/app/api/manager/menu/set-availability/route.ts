@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { verifyManagerAuth } from '@/lib/auth-guard';
+import { invalidateMenuCache } from '@/lib/cafe-cache';
 
 export async function POST(req: NextRequest) {
   const auth = await verifyManagerAuth(req);
@@ -18,34 +19,18 @@ export async function POST(req: NextRequest) {
     }
 
     const supabaseAdmin = createAdminClient();
-    let itemData: Record<string, unknown> | null = null;
+    const { data, error } = await supabaseAdmin
+      .from('menu_items')
+      .update({ is_available })
+      .eq('id', item_id)
+      .select()
+      .single();
 
-    // Try set_item_availability RPC if it exists
-    try {
-      const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc('set_item_availability', {
-        p_item_id: item_id,
-        p_is_available: is_available,
-      });
-      if (!rpcErr && rpcRes) {
-        itemData = rpcRes as Record<string, unknown>;
-      }
-    } catch {
-      // Direct update fallback
+    if (error) {
+      return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
-
-    if (!itemData) {
-      const { data, error } = await supabaseAdmin
-        .from('menu_items')
-        .update({ is_available })
-        .eq('id', item_id)
-        .select()
-        .single();
-
-      if (error) {
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
-      }
-      itemData = data as Record<string, unknown>;
-    }
+    invalidateMenuCache();
+    const itemData = data as Record<string, unknown>;
 
     // Record Audit Log
     try {

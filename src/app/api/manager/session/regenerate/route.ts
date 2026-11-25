@@ -19,39 +19,7 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 1. Try regenerate_pin RPC if it exists
-    if (session_id) {
-      try {
-        const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('regenerate_pin', {
-          p_session_id: session_id,
-        });
-        if (!rpcErr && rpcData) {
-          const rpcObj = rpcData as Record<string, unknown>;
-          const rpcPin = (rpcObj?.pin_code || rpcObj?.pin || '') as string;
-          const actorEmail = auth.email || 'manager@cafe.com';
-          after(async () => {
-            await recordAuditLog({
-              action: 'PIN_GENERATED',
-              actor_email: actorEmail,
-              entity_type: 'table_sessions',
-              entity_id: (rpcObj?.id as string) || session_id,
-              title: `PIN regenerated${rpcPin ? ` (New PIN: ${rpcPin})` : ''}`,
-              details: {
-                table_id: (rpcObj?.table_id as string) || table_id,
-                pin_code: rpcPin,
-                session_id: (rpcObj?.id as string) || session_id,
-                regenerated: true,
-              },
-            }).catch(auditErr => console.warn('PIN regenerated audit log error:', auditErr));
-          });
-          return NextResponse.json({ success: true, session: rpcData });
-        }
-      } catch {
-        // Fallback to direct update
-      }
-    }
-
-    // 2. Generate random 4-digit PIN
+    // Generate random 4-digit PIN and update directly
     const newPin = Math.floor(1000 + Math.random() * 9000).toString();
 
     let query = supabaseAdmin

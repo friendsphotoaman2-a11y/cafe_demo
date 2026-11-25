@@ -25,12 +25,22 @@ export async function GET(req: NextRequest) {
 
     const supabaseAdmin = createAdminClient();
 
-    // Verify session exists AND caller holds its valid session_token
-    const { data: session, error: sessErr } = await supabaseAdmin
-      .from('table_sessions')
-      .select('id, status, session_token')
-      .eq('id', sessionId)
-      .maybeSingle();
+    // Fetch session auth and orders in parallel to cut latency in half
+    const [
+      { data: session, error: sessErr },
+      { data: orders, error },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from('table_sessions')
+        .select('id, status, session_token')
+        .eq('id', sessionId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false }),
+    ]);
 
     if (sessErr || !session) {
       return NextResponse.json(
@@ -46,13 +56,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Fetch orders and items exclusively for this verified session
-    const { data: orders, error } = await supabaseAdmin
-      .from('orders')
-      .select('*, order_items(*)')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false });
-
     if (error) {
       return NextResponse.json(
         { success: false, message: error.message },
@@ -61,7 +64,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true, orders: orders || [] },
+      { success: true, session_status: session.status, orders: orders || [] },
       { headers: NO_CACHE_HEADERS }
     );
   } catch (err: unknown) {

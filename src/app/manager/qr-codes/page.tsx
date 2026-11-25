@@ -58,22 +58,15 @@ export default function ManagerQRCodesPage() {
         return;
       }
 
-      // 2. Fetch tables
-      const { data: tblData } = await supabase
-        .from('cafe_tables')
-        .select('*')
-        .order('table_number', { ascending: true });
+      // 2 & 3. Fetch tables and settings in parallel
+      const [{ data: tblData }, { data: setRow }] = await Promise.all([
+        supabase.from('cafe_tables').select('*').order('table_number', { ascending: true }),
+        supabase.from('manager_settings').select('*').eq('id', 1).maybeSingle(),
+      ]);
 
       if (tblData) {
         setTables(tblData as CafeTable[]);
       }
-
-      // 3. Fetch settings
-      const { data: setRow } = await supabase
-        .from('manager_settings')
-        .select('*')
-        .eq('id', 1)
-        .maybeSingle();
 
       if (setRow) {
         setSettings(prev => ({

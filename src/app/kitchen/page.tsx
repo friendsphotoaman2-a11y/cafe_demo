@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Order, CafeTable, ManagerSettings } from '@/types/database';
 import { playWaiterCallChime, unlockAudio } from '@/lib/audio-chime';
@@ -110,76 +110,46 @@ export default function KitchenPage() {
     if (ok) setSoundUnlocked(true);
   }
 
-  // 5. Fetch Kitchen Data
+  const kitchenInflightRef = useRef(false);
+
+  // 5. Fetch Kitchen Data via single parallelized endpoint
   const fetchKitchenData = useCallback(async () => {
-    const supabase = createClient();
-
-    // Settings check via API to get extended settings
+    if (kitchenInflightRef.current) return;
+    kitchenInflightRef.current = true;
     try {
-      const setRes = await fetch(apiUrl('/api/manager/settings'));
-      const setData = await setRes.json();
-      if (setData.success && setData.settings) {
-        setSettings(setData.settings);
-      } else {
-        const { data: setRow } = await supabase
-          .from('manager_settings')
-          .select('*')
-          .eq('id', 1)
-          .maybeSingle();
-        if (setRow) setSettings(setRow as ManagerSettings);
+      const res = await fetch(apiUrl('/api/manager/dashboard?scope=kitchen'), { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.settings) {
+          setSettings(data.settings as ManagerSettings);
+        }
+        if (Array.isArray(data.tables)) {
+          const map: Record<string, CafeTable> = {};
+          (data.tables as CafeTable[]).forEach(t => {
+            map[t.id] = t;
+          });
+          setTables(map);
+        }
+        if (Array.isArray(data.orders)) {
+          const activeKitchenOrders = (data.orders as Order[]).filter(
+            (o: Order) =>
+              ['PENDING', 'PREPARING', 'READY'].includes(o.status) &&
+              (o.order_items || []).some(it => it.status !== 'CANCELLED')
+          );
+          setOrders(prev => {
+            if (prev.length > 0 && activeKitchenOrders.length > prev.length) {
+              playWaiterCallChime();
+            }
+            return activeKitchenOrders;
+          });
+        }
       }
     } catch {
-      const { data: setRow } = await supabase
-        .from('manager_settings')
-        .select('*')
-        .eq('id', 1)
-        .maybeSingle();
-      if (setRow) setSettings(setRow as ManagerSettings);
+      // Ignore transient network glitches; next poll/realtime will recover
+    } finally {
+      kitchenInflightRef.current = false;
+      setLoading(false);
     }
-
-    // Tables lookup
-    const { data: tblData } = await supabase.from('cafe_tables').select('*');
-    if (tblData) {
-      const map: Record<string, CafeTable> = {};
-      tblData.forEach(t => {
-        map[t.id] = t;
-      });
-      setTables(map);
-    }
-
-    // Active kitchen orders (PENDING, PREPARING, READY)
-    try {
-      const ordRes = await fetch(apiUrl('/api/manager/orders'));
-      const ordJson = await ordRes.json();
-      if (ordJson.success && ordJson.orders) {
-        const activeKitchenOrders = ordJson.orders.filter(
-          (o: Order) =>
-            ['PENDING', 'PREPARING', 'READY'].includes(o.status) &&
-            (o.order_items || []).some(it => it.status !== 'CANCELLED')
-        );
-        setOrders(prev => {
-          if (prev.length > 0 && activeKitchenOrders.length > prev.length) {
-            playWaiterCallChime();
-          }
-          return activeKitchenOrders;
-        });
-      } else {
-        const { data: ordData } = await supabase
-          .from('orders')
-          .select('*, order_items(*)')
-          .in('status', ['PENDING', 'PREPARING', 'READY'])
-          .order('created_at', { ascending: true });
-        if (ordData) setOrders(ordData as Order[]);
-      }
-    } catch {
-      const { data: ordData } = await supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .in('status', ['PENDING', 'PREPARING', 'READY'])
-        .order('created_at', { ascending: true });
-      if (ordData) setOrders(ordData as Order[]);
-    }
-    setLoading(false);
   }, []);
 
   // 6. Realtime Subscriptions

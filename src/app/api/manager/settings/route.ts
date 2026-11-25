@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { ManagerSettings } from '@/types/database';
 import { verifyManagerAuth } from '@/lib/auth-guard';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { invalidateMenuCache } from '@/lib/cafe-cache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
     }
+    invalidateMenuCache();
 
     // Sync per-table pin_override column on cafe_tables so DB column and JSON stay identical
     if (body.table_pin_overrides && typeof body.table_pin_overrides === 'object') {
