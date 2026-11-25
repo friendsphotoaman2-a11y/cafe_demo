@@ -808,7 +808,32 @@ export async function searchAllCustomerInvoicesFromSheet(
         created_at: billIsoDate,
       };
 
-      const billItems = itemsByOrderId.get(ord.order_id.toLowerCase()) || [];
+      let billItems = itemsByOrderId.get(ord.order_id.toLowerCase()) || [];
+      if (billItems.length === 0 && ord.items) {
+        const parsedItems: OrderItem[] = [];
+        const itemRegex = /(\d+)x\s+([^,]+)/g;
+        let match: RegExpExecArray | null;
+        let itemIndex = 0;
+        while ((match = itemRegex.exec(ord.items)) !== null) {
+          const qty = Number(match[1]) || 1;
+          const name = match[2].trim();
+          parsedItems.push({
+            id: `sheet-item-${ord.order_id}-${itemIndex++}`,
+            order_id: ord.order_id,
+            item_id: `item-${itemIndex}`,
+            item_name_en: name,
+            item_name_hi: '',
+            price_per_unit: ord.subtotal && qty ? Math.round(ord.subtotal / qty) : 0,
+            quantity: qty,
+            status: 'SERVED',
+            item_notes: null,
+            created_at: billIsoDate,
+          });
+        }
+        if (parsedItems.length > 0) {
+          billItems = parsedItems;
+        }
+      }
       reconstructedInvoices.push({
         bill,
         items: billItems,
@@ -964,7 +989,7 @@ export async function syncBillToGoogleSheets(
       });
     }
 
-    // Sync OrderItems deduplicating strictly by (order_id AND item_name), batching appends in 1 API call
+    // Sync OrderItems: aggregate identical items across all bills, updating count (qty) and total sales
     if (groupedItemList.length > 0) {
       const itemsRes = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -974,16 +999,14 @@ export async function syncBillToGoogleSheets(
       const rowsToAppend: Array<[string, string, number, number, number, string]> = [];
 
       for (const item of groupedItemList) {
-        const targetName = item.itemName.toLowerCase();
+        const targetName = item.itemName.trim().toLowerCase();
         let matchedItemRowIndex = -1;
 
         for (let r = 1; r < existingItemRows.length; r++) {
           const row = existingItemRows[r];
           if (
             row &&
-            row[0] &&
             row[1] &&
-            row[0].trim().toLowerCase() === targetOrderId &&
             row[1].trim().toLowerCase() === targetName
           ) {
             matchedItemRowIndex = r + 1;
@@ -993,13 +1016,29 @@ export async function syncBillToGoogleSheets(
 
         if (matchedItemRowIndex !== -1) {
           const existingRow = existingItemRows[matchedItemRowIndex - 1];
+          const existingQty = Number(existingRow[2]) || 0;
+          const updatedQty = existingQty + item.qty;
+          const effectiveRate = item.rate || Number(existingRow[3]) || 0;
+          const existingAmt = Number(existingRow[4]) || 0;
+          const updatedAmt = existingAmt + item.amount;
+          const isFree = item.isFree || (existingRow[5] || '').toString().toUpperCase() === 'YES';
+
           const updatedRow = [
             bill.invoice_number,
             item.itemName,
-            item.qty,
-            item.rate,
-            item.amount,
-            item.isFree ? 'YES' : existingRow[5] || 'NO',
+            updatedQty,
+            effectiveRate,
+            updatedAmt,
+            isFree ? 'YES' : 'NO',
+          ];
+
+          existingItemRows[matchedItemRowIndex - 1] = [
+            bill.invoice_number,
+            item.itemName,
+            String(updatedQty),
+            String(effectiveRate),
+            String(updatedAmt),
+            isFree ? 'YES' : 'NO',
           ];
 
           await sheets.spreadsheets.values.update({
@@ -1015,6 +1054,14 @@ export async function syncBillToGoogleSheets(
             item.qty,
             item.rate,
             item.amount,
+            item.isFree ? 'YES' : 'NO',
+          ]);
+          existingItemRows.push([
+            bill.invoice_number,
+            item.itemName,
+            String(item.qty),
+            String(item.rate),
+            String(item.amount),
             item.isFree ? 'YES' : 'NO',
           ]);
         }
@@ -1112,12 +1159,6 @@ export async function deleteOrderFromSheet(
       row => (row[0] || '').toString().trim().toLowerCase() === target
     );
 
-    await deleteRowsByPredicate(
-      spreadsheetId,
-      'OrderItems',
-      'OrderItems!A:A',
-      row => (row[0] || '').toString().trim().toLowerCase() === target
-    );
 
     return { success: true, deletedCount: deletedOrders };
   } catch (err: unknown) {

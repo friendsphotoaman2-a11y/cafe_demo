@@ -176,22 +176,46 @@ export async function GET(req: NextRequest) {
       }))
       .sort((a, b) => b.total_sales - a.total_sales);
 
-    // Best-Selling Items from Google Sheet OrderItems matching filtered orders
-    const matchedOrderIds = new Set(filteredOrders.map(o => o.order_id.toLowerCase()));
+    // Best-Selling Items calculation
     const itemsMap = new Map<string, { name_en: string; name_hi: string; quantity: number; revenue: number }>();
-
+    const itemRates = new Map<string, number>();
     for (const it of orderItems) {
-      if (!matchedOrderIds.has(it.order_id.toLowerCase())) continue;
-      const key = it.item_name || 'Menu Item';
-      const existing = itemsMap.get(key) || {
-        name_en: key,
-        name_hi: '',
-        quantity: 0,
-        revenue: 0,
-      };
-      existing.quantity += Number(it.qty) || 1;
-      existing.revenue += Number(it.amount) || 0;
-      itemsMap.set(key, existing);
+      if (it.item_name && it.rate) {
+        itemRates.set(it.item_name.trim().toLowerCase(), Number(it.rate) || 0);
+      }
+    }
+
+    if (range === 'all') {
+      for (const it of orderItems) {
+        const key = it.item_name || 'Menu Item';
+        itemsMap.set(key, {
+          name_en: key,
+          name_hi: '',
+          quantity: Number(it.qty) || 0,
+          revenue: Number(it.amount) || 0,
+        });
+      }
+    } else {
+      const itemRegex = /(\d+)x\s+([^,]+)/g;
+      for (const o of filteredOrders) {
+        if (!o.items) continue;
+        let match: RegExpExecArray | null;
+        while ((match = itemRegex.exec(o.items)) !== null) {
+          const qty = Number(match[1]) || 1;
+          const name = match[2].trim();
+          const key = name.toLowerCase();
+          const rate = itemRates.get(key) || (o.subtotal && qty ? Math.round(o.subtotal / qty) : 0);
+          const existing = itemsMap.get(name) || {
+            name_en: name,
+            name_hi: '',
+            quantity: 0,
+            revenue: 0,
+          };
+          existing.quantity += qty;
+          existing.revenue += qty * rate;
+          itemsMap.set(name, existing);
+        }
+      }
     }
 
     const totalItemsQty = Array.from(itemsMap.values()).reduce((sum, it) => sum + it.quantity, 0);
