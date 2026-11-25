@@ -98,18 +98,24 @@ export async function POST(req: NextRequest) {
     const dailyCounter = await getNextDailyOrderSequenceFromSheet(prefix, dateStr, sheetId);
     const uniqueOrderId = `${prefix}${dateStr}-${dailyCounter}`;
 
-    // 4. Fetch live order items for this active session
+    // 4. Fetch all unbilled, non-cancelled orders for this session OR table
+    // (guarantees any concurrent/reopened table session orders are never left out of billing)
     const { data: orderRecords } = await supabaseAdmin
       .from('orders')
-      .select('id, order_items(*)')
-      .eq('session_id', session_id);
+      .select('id, status, session_id, order_items(*)')
+      .or(
+        `session_id.eq.${session_id},and(table_id.eq.${sessionRow.table_id},status.neq.BILLED,status.neq.CANCELLED)`
+      );
+
+    const activeOrderRecords = (orderRecords || []).filter(
+      o => o.status !== 'BILLED' && o.status !== 'CANCELLED'
+    );
+    const billedOrderIds = activeOrderRecords.map(o => o.id);
 
     const orderItems: OrderItem[] = [];
-    if (orderRecords) {
-      for (const order of orderRecords) {
-        if (order.order_items && Array.isArray(order.order_items)) {
-          orderItems.push(...(order.order_items as OrderItem[]));
-        }
+    for (const order of activeOrderRecords) {
+      if (order.order_items && Array.isArray(order.order_items)) {
+        orderItems.push(...(order.order_items as OrderItem[]));
       }
     }
 
@@ -188,14 +194,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7. Close the live table session (notifies open customer screens via Realtime)
-    // and purge live session orders from Supabase so Supabase stays light (no completed order history stored)
+    // 7. Close the live table session (and any duplicate active sessions on this table)
+    // and purge billed live orders from Supabase so Supabase stays light
     await supabaseAdmin
       .from('table_sessions')
       .update({ status: 'CLOSED', closed_at: now.toISOString() })
-      .eq('id', session_id);
+      .eq('table_id', sessionRow.table_id)
+      .eq('status', 'ACTIVE');
 
-    await supabaseAdmin.from('orders').delete().eq('session_id', session_id);
+    if (billedOrderIds.length > 0) {
+      await supabaseAdmin.from('orders').delete().in('id', billedOrderIds);
+    } else {
+      await supabaseAdmin.from('orders').delete().eq('session_id', session_id);
+    }
 
     // 8. Invalidate all Sheets read caches so UI updates immediately
     invalidateSheetsCache();

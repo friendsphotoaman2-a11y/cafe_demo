@@ -1402,7 +1402,12 @@ export default function ManagerDashboard() {
 
                   // State Colors: Red (Waiter Calling), Orange (Active), Green (Free)
                   const sessionOrders = isActive
-                    ? allOrders.filter(o => o.session_id === session.id)
+                    ? allOrders.filter(
+                        o =>
+                          o.status !== 'BILLED' &&
+                          o.status !== 'CANCELLED' &&
+                          (o.session_id === session.id || o.table_id === table.id)
+                      )
                     : [];
 
                   const itemsCount = sessionOrders.reduce(
@@ -2618,7 +2623,12 @@ export default function ManagerDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {activeTablesList.map(table => {
                     const session = sessions[table.id];
-                    const sessionOrders = allOrders.filter(o => o.session_id === session.id);
+                    const sessionOrders = allOrders.filter(
+                      o =>
+                        o.status !== 'BILLED' &&
+                        o.status !== 'CANCELLED' &&
+                        (o.session_id === session.id || o.table_id === table.id)
+                    );
                     const total = sessionOrders.reduce(
                       (sum, o) =>
                         sum +
@@ -3254,11 +3264,13 @@ export default function ManagerDashboard() {
           <TableDetailsPanel
             table={selectedTableForPanel}
             session={sessions[selectedTableForPanel.id] || null}
-            orders={
-              sessions[selectedTableForPanel.id]
-                ? allOrders.filter(o => o.session_id === sessions[selectedTableForPanel.id]?.id)
-                : []
-            }
+            orders={allOrders.filter(
+              o =>
+                o.status !== 'BILLED' &&
+                o.status !== 'CANCELLED' &&
+                (o.table_id === selectedTableForPanel.id ||
+                  o.session_id === sessions[selectedTableForPanel.id]?.id)
+            )}
             waiterCall={
               waiterCalls.find(
                 c => c.table_id === selectedTableForPanel.id && c.status === 'PENDING'

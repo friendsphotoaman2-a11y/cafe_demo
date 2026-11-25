@@ -73,7 +73,11 @@ export async function GET(req: NextRequest) {
 
     const [tblRes, sessRes, ordRes, itmRes, catRes, callRes, setRes] = await Promise.all([
       supabaseAdmin.from('cafe_tables').select('*').order('table_number'),
-      supabaseAdmin.from('table_sessions').select('*').eq('status', 'ACTIVE'),
+      supabaseAdmin
+        .from('table_sessions')
+        .select('*')
+        .eq('status', 'ACTIVE')
+        .order('opened_at', { ascending: true }),
       supabaseAdmin
         .from('orders')
         .select('*, order_items(*)')
@@ -89,17 +93,57 @@ export async function GET(req: NextRequest) {
       supabaseAdmin.from('manager_settings').select('*').eq('id', 1).maybeSingle(),
     ]);
 
-    const sessionsMap: Record<string, TableSession> = {};
+    const ordersList = ordRes.data || [];
+    const sessionsByTable: Record<string, TableSession[]> = {};
     (sessRes.data || []).forEach(s => {
-      sessionsMap[s.table_id] = s as TableSession;
+      const sess = s as TableSession;
+      if (!sessionsByTable[sess.table_id]) sessionsByTable[sess.table_id] = [];
+      sessionsByTable[sess.table_id].push(sess);
     });
+
+    const sessionsMap: Record<string, TableSession> = {};
+    const duplicateIdsToClose: string[] = [];
+    for (const [tableId, list] of Object.entries(sessionsByTable)) {
+      if (list.length === 1) {
+        sessionsMap[tableId] = list[0];
+        continue;
+      }
+      // Prefer the active session that already has orders, or the earliest active session
+      const withOrders = list.find(s => ordersList.some(o => o.session_id === s.id));
+      const canonical = withOrders || list[0];
+      sessionsMap[tableId] = canonical;
+      for (const s of list) {
+        if (s.id !== canonical.id) {
+          duplicateIdsToClose.push(s.id);
+        }
+      }
+    }
+
+    if (duplicateIdsToClose.length > 0) {
+      // Best-effort consolidate duplicate active sessions cleanly
+      await Promise.all(
+        Object.entries(sessionsByTable)
+          .filter(([, list]) => list.length > 1)
+          .map(async ([tableId, list]) => {
+            const canonical = sessionsMap[tableId];
+            const dupIds = list.filter(s => s.id !== canonical.id).map(s => s.id);
+            if (dupIds.length === 0) return;
+            await supabaseAdmin.from('orders').update({ session_id: canonical.id }).in('session_id', dupIds);
+            await supabaseAdmin.from('waiter_calls').update({ session_id: canonical.id }).in('session_id', dupIds);
+            await supabaseAdmin
+              .from('table_sessions')
+              .update({ status: 'CLOSED', closed_at: new Date().toISOString() })
+              .in('id', dupIds);
+          })
+      ).catch(() => {});
+    }
 
     return NextResponse.json(
       {
         success: true,
         tables: tblRes.data || [],
         sessions: sessionsMap,
-        orders: ordRes.data || [],
+        orders: ordersList,
         menuItems: itmRes.data || [],
         categories: catRes.data || [],
         waiterCalls: callRes.data || [],

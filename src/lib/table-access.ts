@@ -45,6 +45,115 @@ function parseBooleanStrict(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
+// Per-table in-process lock to prevent concurrent PIN-OFF requests from creating duplicate ACTIVE sessions
+const inflightPinOffCreations = new Map<string, Promise<TableAccessResult>>();
+
+async function getOrCreateCanonicalPinOffSession(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  table: { id: string; table_number: string; table_code: string }
+): Promise<TableAccessResult> {
+  const { data: activeSessions, error: existingErr } = await supabaseAdmin
+    .from('table_sessions')
+    .select('id, session_token, status, locked_until, opened_at')
+    .eq('table_id', table.id)
+    .eq('status', 'ACTIVE')
+    .order('opened_at', { ascending: true });
+
+  if (existingErr) {
+    console.error('[resolveTableAccess] Error finding active session (PIN OFF):', existingErr);
+    return { access: 'error', message: 'Failed to load table session.' };
+  }
+
+  if (activeSessions && activeSessions.length > 0) {
+    const canonical = activeSessions[0];
+    // Consolidate any duplicate ACTIVE sessions created by cross-instance races
+    if (activeSessions.length > 1) {
+      const duplicateIds = activeSessions.slice(1).map(s => s.id);
+      await Promise.all([
+        supabaseAdmin.from('orders').update({ session_id: canonical.id }).in('session_id', duplicateIds),
+        supabaseAdmin.from('waiter_calls').update({ session_id: canonical.id }).in('session_id', duplicateIds),
+        supabaseAdmin
+          .from('table_sessions')
+          .update({ status: 'CLOSED', closed_at: new Date().toISOString() })
+          .in('id', duplicateIds),
+      ]).catch(err => console.warn('[resolveTableAccess] Duplicate session cleanup warning:', err));
+    }
+
+    return {
+      access: 'granted',
+      require_pin: false,
+      active: true,
+      session_id: canonical.id,
+      session_token: canonical.session_token,
+      table_id: table.id,
+      table_number: table.table_number,
+      table_code: table.table_code,
+    };
+  }
+
+  // Create ONE new active session with a valid UUID session_token
+  const newToken = crypto.randomUUID();
+  const { data: newSession, error: createErr } = await supabaseAdmin
+    .from('table_sessions')
+    .insert({
+      table_id: table.id,
+      pin_code: '0000',
+      session_token: newToken,
+      status: 'ACTIVE',
+      opened_at: new Date().toISOString(),
+    })
+    .select('id, session_token')
+    .single();
+
+  if (createErr || !newSession) {
+    console.error('[resolveTableAccess] Failed to create PIN-OFF session:', createErr);
+    return { access: 'error', message: 'Failed to open table session.' };
+  }
+
+  // Double-check after insert in case another serverless instance inserted concurrently
+  const { data: postInsertSessions } = await supabaseAdmin
+    .from('table_sessions')
+    .select('id, session_token, opened_at')
+    .eq('table_id', table.id)
+    .eq('status', 'ACTIVE')
+    .order('opened_at', { ascending: true });
+
+  if (postInsertSessions && postInsertSessions.length > 1) {
+    const canonical = postInsertSessions[0];
+    const duplicateIds = postInsertSessions.slice(1).map(s => s.id);
+    await Promise.all([
+      supabaseAdmin.from('orders').update({ session_id: canonical.id }).in('session_id', duplicateIds),
+      supabaseAdmin.from('waiter_calls').update({ session_id: canonical.id }).in('session_id', duplicateIds),
+      supabaseAdmin
+        .from('table_sessions')
+        .update({ status: 'CLOSED', closed_at: new Date().toISOString() })
+        .in('id', duplicateIds),
+    ]).catch(() => {});
+
+    return {
+      access: 'granted',
+      require_pin: false,
+      active: true,
+      session_id: canonical.id,
+      session_token: canonical.session_token,
+      table_id: table.id,
+      table_number: table.table_number,
+      table_code: table.table_code,
+    };
+  }
+
+  return {
+    access: 'granted',
+    require_pin: false,
+    active: true,
+    session_id: newSession.id,
+    session_token: newSession.session_token,
+    table_id: table.id,
+    table_number: table.table_number,
+    table_code: table.table_code,
+  };
+}
+
 /**
  * Single server-side source of truth for table access and PIN enforcement.
  * Reads manager_settings and cafe_tables using the Supabase service role,
@@ -173,64 +282,17 @@ export async function resolveTableAccess(
     }
   }
 
-  // 5. PIN OFF MODE: Get or create ONE open session for this table, grant access immediately
+  // 5. PIN OFF MODE: Get or create ONE canonical open session for this table, grant access immediately
   if (!effectiveRequirePin) {
-    const { data: existingSession, error: existingErr } = await supabaseAdmin
-      .from('table_sessions')
-      .select('id, session_token, status, locked_until')
-      .eq('table_id', table.id)
-      .eq('status', 'ACTIVE')
-      .order('opened_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingErr) {
-      console.error('[resolveTableAccess] Error finding active session (PIN OFF):', existingErr);
-      return { access: 'error', message: 'Failed to load table session.' };
+    const existingPromise = inflightPinOffCreations.get(table.id);
+    if (existingPromise) {
+      return existingPromise;
     }
-
-    if (existingSession && existingSession.status === 'ACTIVE') {
-      return {
-        access: 'granted',
-        require_pin: false,
-        active: true,
-        session_id: existingSession.id,
-        session_token: existingSession.session_token,
-        table_id: table.id,
-        table_number: table.table_number,
-        table_code: table.table_code,
-      };
-    }
-
-    // Create ONE new active session with a valid UUID session_token
-    const newToken = crypto.randomUUID();
-    const { data: newSession, error: createErr } = await supabaseAdmin
-      .from('table_sessions')
-      .insert({
-        table_id: table.id,
-        pin_code: '0000',
-        session_token: newToken,
-        status: 'ACTIVE',
-        opened_at: new Date().toISOString(),
-      })
-      .select('id, session_token')
-      .single();
-
-    if (createErr || !newSession) {
-      console.error('[resolveTableAccess] Failed to create PIN-OFF session:', createErr);
-      return { access: 'error', message: 'Failed to open table session.' };
-    }
-
-    return {
-      access: 'granted',
-      require_pin: false,
-      active: true,
-      session_id: newSession.id,
-      session_token: newSession.session_token,
-      table_id: table.id,
-      table_number: table.table_number,
-      table_code: table.table_code,
-    };
+    const creationPromise = getOrCreateCanonicalPinOffSession(supabaseAdmin, table).finally(() => {
+      inflightPinOffCreations.delete(table.id);
+    });
+    inflightPinOffCreations.set(table.id, creationPromise);
+    return creationPromise;
   }
 
   // 6. PIN ON MODE: Require valid PIN for this table's open session
