@@ -1387,13 +1387,14 @@ export default function ManagerDashboard() {
                     </div>
                     <div>
                       <h3 className="font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
-                        <span>Master Table PIN:</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
                           settings.require_pin ?? true
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                             : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                         }`}>
-                          {settings.require_pin ?? true ? 'ON (PIN Required)' : 'OFF (Instant Direct Access)'}
+                          {settings.require_pin ?? true
+                            ? 'Table PIN: ON'
+                            : 'Table PIN: OFF — customers enter directly'}
                         </span>
                       </h3>
                       <p className="text-xs text-stone-400 mt-0.5">

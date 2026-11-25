@@ -4,6 +4,15 @@ import { ManagerSettings } from '@/types/database';
 import { verifyManagerAuth } from '@/lib/auth-guard';
 import { recordAuditLog } from '@/lib/audit-logger';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+};
+
 interface SettingsMeta {
   email?: string;
   tax_enabled?: boolean;
@@ -61,7 +70,7 @@ export async function GET(req: NextRequest) {
       table_pin_overrides: meta.table_pin_overrides || {},
     };
 
-    return NextResponse.json({ success: true, settings: mergedSettings });
+    return NextResponse.json({ success: true, settings: mergedSettings }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     return NextResponse.json(
       { success: false, message: err instanceof Error ? err.message : 'Internal error' },
@@ -113,13 +122,9 @@ export async function POST(req: NextRequest) {
       kitchen_screen_enabled: Boolean(body.kitchen_screen_enabled),
       google_sheet_id: body.google_sheet_id !== undefined ? body.google_sheet_id : existingData?.google_sheet_id,
       cafe_tagline: JSON.stringify(meta),
+      require_pin: newRequirePin,
       updated_at: new Date().toISOString(),
     };
-
-    // If require_pin column exists in database schema, update it too
-    if ((existingData as Record<string, unknown>)?.require_pin !== undefined) {
-      updatePayload.require_pin = newRequirePin;
-    }
 
     const { data, error } = await supabase
       .from('manager_settings')
@@ -129,7 +134,20 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+      return NextResponse.json({ success: false, message: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
+    }
+
+    // Sync per-table pin_override column on cafe_tables so DB column and JSON stay identical
+    if (body.table_pin_overrides && typeof body.table_pin_overrides === 'object') {
+      const overrideEntries = Object.entries(newOverrides as Record<string, 'DEFAULT' | 'ON' | 'OFF'>);
+      await Promise.all(
+        overrideEntries.map(([tblId, mode]) =>
+          supabase
+            .from('cafe_tables')
+            .update({ pin_override: mode })
+            .eq('id', tblId)
+        )
+      );
     }
 
     // Log PIN settings & overrides directly to Google Sheets AuditLog tab after response
@@ -168,7 +186,7 @@ export async function POST(req: NextRequest) {
       table_pin_overrides: newOverrides,
     };
 
-    return NextResponse.json({ success: true, settings: mergedSettings });
+    return NextResponse.json({ success: true, settings: mergedSettings }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     return NextResponse.json(
       { success: false, message: err instanceof Error ? err.message : 'Internal error' },
