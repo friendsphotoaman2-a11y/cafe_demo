@@ -63,6 +63,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
   const [pinUnlockSuccess, setPinUnlockSuccess] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isSessionEnded, setIsSessionEnded] = useState(false);
+  const [tableNotFound, setTableNotFound] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'menu' | 'orders'>('menu');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -112,6 +114,103 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     }
   };
 
+  const checkExistingSession = React.useCallback(async () => {
+    setIsCheckingSession(true);
+    setTableNotFound(false);
+    setAccessError(null);
+
+    // Clear any stale client-side PIN requirement flags
+    try {
+      localStorage.removeItem('pinRequired');
+      localStorage.removeItem('cafe_pin_required');
+      localStorage.removeItem(`cafe_pin_required_${tableCode}`);
+      sessionStorage.removeItem('pinRequired');
+      sessionStorage.removeItem('cafe_pin_required');
+      sessionStorage.removeItem(`cafe_pin_required_${tableCode}`);
+    } catch {}
+
+    const savedToken =
+      localStorage.getItem(`cafe_session_${tableCode}`) ||
+      sessionStorage.getItem(`cafe_session_${tableCode}`);
+    const savedSessionId =
+      localStorage.getItem(`cafe_session_id_${tableCode}`) ||
+      sessionStorage.getItem(`cafe_session_id_${tableCode}`);
+    const savedTableNum =
+      localStorage.getItem(`cafe_table_num_${tableCode}`) ||
+      sessionStorage.getItem(`cafe_table_num_${tableCode}`);
+
+    try {
+      const queryParams = new URLSearchParams({
+        table_code: tableCode,
+      });
+      if (savedSessionId) queryParams.set('session_id', savedSessionId);
+      if (savedToken) queryParams.set('session_token', savedToken);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(apiUrl(`/api/table/session?${queryParams.toString()}`), {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      if (res.status === 404 || data?.access === 'not_found') {
+        setTableNotFound(true);
+        setIsPinVerified(false);
+        return;
+      }
+
+      if (!res.ok || !data?.success) {
+        setAccessError(data?.message || 'Unable to verify table access. Please retry.');
+        return;
+      }
+
+      if (data.access === 'granted' || data.active) {
+        const token = data.session_token || savedToken;
+        const sessId = data.session_id || savedSessionId;
+        const tblNum = data.table_number || savedTableNum || `Table ${tableCode}`;
+
+        setSessionToken(token);
+        setSessionId(sessId);
+        setTableNumber(tblNum);
+        setIsPinVerified(true);
+
+        try {
+          if (token) {
+            localStorage.setItem(`cafe_session_${tableCode}`, token);
+            sessionStorage.setItem(`cafe_session_${tableCode}`, token);
+          }
+          if (sessId) {
+            localStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
+            sessionStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
+          }
+          localStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+          sessionStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
+        } catch {}
+      } else {
+        if (data.table_number) setTableNumber(data.table_number);
+        setIsPinVerified(false);
+        try {
+          localStorage.removeItem(`cafe_session_${tableCode}`);
+          localStorage.removeItem(`cafe_session_id_${tableCode}`);
+          sessionStorage.removeItem(`cafe_session_${tableCode}`);
+          sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+        } catch {}
+      }
+    } catch {
+      if (savedToken && savedSessionId) {
+        setSessionToken(savedToken);
+        setSessionId(savedSessionId);
+        setIsPinVerified(true);
+      } else {
+        setAccessError('Connection error while checking table access. Please retry.');
+      }
+    } finally {
+      setIsCheckingSession(false);
+    }
+  }, [tableCode]);
+
   // Initialize Anonymous Auth, device_id, saved cart, and open table session
   useEffect(() => {
     async function initAnonymousAuth() {
@@ -145,77 +244,8 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       }
     } catch {}
 
-    async function checkExistingSession() {
-      const savedToken =
-        localStorage.getItem(`cafe_session_${tableCode}`) ||
-        sessionStorage.getItem(`cafe_session_${tableCode}`);
-      const savedSessionId =
-        localStorage.getItem(`cafe_session_id_${tableCode}`) ||
-        sessionStorage.getItem(`cafe_session_id_${tableCode}`);
-      const savedTableNum =
-        localStorage.getItem(`cafe_table_num_${tableCode}`) ||
-        sessionStorage.getItem(`cafe_table_num_${tableCode}`);
-
-      try {
-        const queryParams = new URLSearchParams({
-          table_code: tableCode,
-        });
-        if (savedSessionId) queryParams.set('session_id', savedSessionId);
-        if (savedToken) queryParams.set('session_token', savedToken);
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch(apiUrl(`/api/table/session?${queryParams.toString()}`), {
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        const data = await res.json();
-
-        if (data && data.success) {
-          if (data.active) {
-            const token = data.session_token || savedToken;
-            const sessId = data.session_id || savedSessionId;
-            const tblNum = data.table_number || savedTableNum || `Table ${tableCode}`;
-
-            setSessionToken(token);
-            setSessionId(sessId);
-            setTableNumber(tblNum);
-            setIsPinVerified(true);
-
-            try {
-              if (token) {
-                localStorage.setItem(`cafe_session_${tableCode}`, token);
-                sessionStorage.setItem(`cafe_session_${tableCode}`, token);
-              }
-              if (sessId) {
-                localStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
-                sessionStorage.setItem(`cafe_session_id_${tableCode}`, sessId);
-              }
-              localStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
-              sessionStorage.setItem(`cafe_table_num_${tableCode}`, tblNum);
-            } catch {}
-          } else {
-            try {
-              localStorage.removeItem(`cafe_session_${tableCode}`);
-              localStorage.removeItem(`cafe_session_id_${tableCode}`);
-              sessionStorage.removeItem(`cafe_session_${tableCode}`);
-              sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
-            } catch {}
-          }
-        }
-      } catch {
-        if (savedToken && savedSessionId) {
-          setSessionToken(savedToken);
-          setSessionId(savedSessionId);
-          setIsPinVerified(true);
-        }
-      } finally {
-        setIsCheckingSession(false);
-      }
-    }
-
     checkExistingSession();
-  }, [tableCode]);
+  }, [tableCode, checkExistingSession]);
 
   // Persist cart cleanly across accidental refreshes
   useEffect(() => {
@@ -510,21 +540,17 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
     const supabase = createClient();
 
     async function fetchOrders() {
+      if (!sessionId || !sessionToken) return;
       try {
-        const res = await fetch(apiUrl(`/api/table/orders?sessionId=${sessionId}`));
+        const res = await fetch(
+          apiUrl(`/api/table/orders?sessionId=${encodeURIComponent(sessionId)}&sessionToken=${encodeURIComponent(sessionToken)}`),
+          { cache: 'no-store' }
+        );
         const result = await res.json();
         if (result.success && Array.isArray(result.orders)) {
           setTableOrders(result.orders as Order[]);
-          return;
         }
       } catch {}
-      const { data } = await supabase
-        .from('orders')
-        .select('*, order_items(*)')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: false });
-
-      if (data) setTableOrders(data as Order[]);
     }
 
     fetchOrders();
@@ -602,7 +628,7 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
       supabase.removeChannel(orderChannel);
       supabase.removeChannel(sessionChannel);
     };
-  }, [isPinVerified, sessionId, tableCode]);
+  }, [isPinVerified, sessionId, sessionToken, tableCode]);
 
   // Cart Helpers
   function addToCart(item: MenuItem, customNote?: string) {
@@ -704,16 +730,16 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
           msg.toLowerCase().includes('not available');
 
         if (isSessionClosed) {
-          setCartError(
-            language === 'hi'
-              ? 'टेबल सत्र समाप्त हो चुका है। कृपया नया पिन पाने के लिए मैनेजर से संपर्क करें।'
-              : 'Session is closed or invalid. Please ask manager for a new PIN.'
-          );
-          setIsPinVerified(false);
           localStorage.removeItem(`cafe_session_${tableCode}`);
           localStorage.removeItem(`cafe_session_id_${tableCode}`);
           sessionStorage.removeItem(`cafe_session_${tableCode}`);
           sessionStorage.removeItem(`cafe_session_id_${tableCode}`);
+          setCartError(
+            language === 'hi'
+              ? 'टेबल सत्र समाप्त हो गया था। कृपया पुनः प्रयास करें।'
+              : 'Session ended or refreshed. Please tap Place Order again.'
+          );
+          await checkExistingSession();
         } else if (isUnavailable) {
           setCartError(
             language === 'hi'
@@ -830,10 +856,47 @@ export default function TablePage({ params }: { params: Promise<{ tableCode?: st
               setIsSessionEnded(false);
               setPin('');
               setPinError(null);
+              checkExistingSession();
             }}
             className="w-full min-h-[48px] py-3.5 px-6 rounded-2xl bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-[0.98] text-white font-black text-sm shadow-lg shadow-amber-500/25 transition cursor-pointer touch-manipulation"
           >
             {language === 'hi' ? 'नया सत्र शुरू करें' : 'Start Fresh Session'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // SCREEN -1: TABLE NOT FOUND OR ACCESS ERROR
+  // -------------------------------------------------------------
+  if (tableNotFound) {
+    return (
+      <div className="min-h-[100dvh] w-full bg-[#faf7f2] flex flex-col items-center justify-center px-5 text-center">
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-stone-200 p-7 space-y-3">
+          <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
+          <h1 className="text-xl font-black text-stone-900">Table not found</h1>
+          <p className="text-xs text-stone-500">
+            Table code <span className="font-mono font-bold">{tableCode}</span> is invalid or inactive. Please scan a valid table QR code.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessError && !isPinVerified && !isCheckingSession) {
+    return (
+      <div className="min-h-[100dvh] w-full bg-[#faf7f2] flex flex-col items-center justify-center px-5 text-center">
+        <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-stone-200 p-7 space-y-4">
+          <AlertTriangle className="w-10 h-10 text-rose-500 mx-auto" />
+          <h1 className="text-lg font-black text-stone-900">Connection Issue</h1>
+          <p className="text-xs text-stone-500">{accessError}</p>
+          <button
+            type="button"
+            onClick={() => checkExistingSession()}
+            className="w-full py-3 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm cursor-pointer"
+          >
+            Retry
           </button>
         </div>
       </div>

@@ -1,1 +1,1 @@
-export { POST } from '../verify-pin/route';
+export { POST, dynamic, revalidate } from '../verify-pin/route';
