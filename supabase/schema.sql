@@ -229,13 +229,13 @@ BEGIN
     END IF;
 
     -- 3. Check if table is locked due to 5 wrong attempts
-    IF v_session.locked_until IS NOT NULL AND v_session.locked_until > now() THEN
-        v_lock_remaining_seconds := EXTRACT(EPOCH FROM (v_session.locked_until - now()))::INTEGER;
+    IF (v_session.failed_attempts >= 5) OR (v_session.locked_until IS NOT NULL AND v_session.locked_until > now()) THEN
         RETURN jsonb_build_object(
             'success', false,
             'locked', true,
-            'lock_remaining_seconds', v_lock_remaining_seconds,
-            'message', 'Too many wrong attempts. Table is locked for ' || CEIL(v_lock_remaining_seconds / 60.0)::TEXT || ' minute(s). Please talk to manager.'
+            'permanent_lock', true,
+            'attempts_left', 0,
+            'message', '5 बार गलत पिन दर्ज किया गया। यह पिन ब्लॉक हो गया है। कृपया मैनेजर से नया पिन लें। (5 wrong attempts exceeded. This PIN is blocked. Please get a new PIN from the manager.)'
         );
     END IF;
 
@@ -260,7 +260,7 @@ BEGIN
         UPDATE public.table_sessions
         SET failed_attempts = failed_attempts + 1,
             locked_until = CASE
-                WHEN failed_attempts + 1 >= 5 THEN now() + INTERVAL '5 minutes'
+                WHEN failed_attempts + 1 >= 5 THEN 'infinity'::TIMESTAMPTZ
                 ELSE NULL
             END
         WHERE id = v_session.id;
@@ -269,15 +269,16 @@ BEGIN
             RETURN jsonb_build_object(
                 'success', false,
                 'locked', true,
-                'lock_remaining_seconds', 300,
-                'message', 'Invalid PIN. Please talk to the manager and get your PIN again.'
+                'permanent_lock', true,
+                'attempts_left', 0,
+                'message', '5 बार गलत पिन दर्ज किया गया। यह पिन ब्लॉक हो गया है। कृपया मैनेजर से नया पिन लें। (5 wrong attempts exceeded. This PIN is blocked. Please get a new PIN from the manager.)'
             );
         ELSE
             RETURN jsonb_build_object(
                 'success', false,
                 'locked', false,
                 'attempts_left', 5 - (v_session.failed_attempts + 1),
-                'message', 'Invalid PIN. Please talk to the manager and get your PIN again.'
+                'message', 'गलत पिन! केवल ' || (5 - (v_session.failed_attempts + 1))::TEXT || ' प्रयास शेष हैं। (Invalid PIN. ' || (5 - (v_session.failed_attempts + 1))::TEXT || ' attempt(s) remaining.)'
             );
         END IF;
     END IF;

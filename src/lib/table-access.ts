@@ -298,7 +298,7 @@ export async function resolveTableAccess(
   // 6. PIN ON MODE: Require valid PIN for this table's open session
   const { data: currentSession, error: curErr } = await supabaseAdmin
     .from('table_sessions')
-    .select('id, status, locked_until')
+    .select('id, status, locked_until, failed_attempts')
     .eq('table_id', table.id)
     .eq('status', 'ACTIVE')
     .order('opened_at', { ascending: false })
@@ -310,7 +310,8 @@ export async function resolveTableAccess(
   }
 
   const isLocked = Boolean(
-    currentSession?.locked_until && new Date(currentSession.locked_until) > new Date()
+    (Number(currentSession?.failed_attempts) >= 5) ||
+    (currentSession?.locked_until && new Date(currentSession.locked_until) > new Date())
   );
 
   return {

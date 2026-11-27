@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
@@ -353,20 +353,24 @@ export function TableClient({
       if (data.locked) {
         triggerHaptic([70, 40, 70]);
         setIsLocked(true);
-        const remSec = data.lock_remaining_seconds || 300;
-        setLockCountdown(remSec);
-        const remMin = Math.max(1, Math.ceil(remSec / 60));
         setPinError(
-          language === 'hi'
-            ? `बहुत सारे गलत प्रयास। टेबल ${remMin} मिनट के लिए लॉक है। कृपया मैनेजर से बात करें।`
-            : `Too many wrong attempts. Table is locked for ${remMin} minute(s). Please talk to manager.`
+          data.message ||
+            (language === 'hi'
+              ? '5 बार गलत पिन दर्ज किया गया। यह पिन ब्लॉक हो गया है। टेबल अनलॉक करने के लिए कृपया मैनेजर या एडमिन से नया पिन लें।'
+              : '5 wrong attempts exceeded. This PIN is blocked. Please contact the manager for a new PIN.')
         );
         return;
       }
 
       if (!data.success) {
         triggerHaptic([60, 40, 60]);
-        setPinError(data.message || defaultInvalidMsg);
+        const msg =
+          data.attempts_left !== undefined
+            ? language === 'hi'
+              ? `गलत पिन! केवल ${data.attempts_left} प्रयास शेष हैं।`
+              : `Invalid PIN! Only ${data.attempts_left} attempt(s) remaining.`
+            : (data.message || defaultInvalidMsg);
+        setPinError(msg);
         setPin('');
         return;
       }
@@ -979,8 +983,6 @@ export function TableClient({
   // SCREEN 1: 4-DIGIT PIN AUTHENTICATION SCREEN
   // -------------------------------------------------------------
   if (!isPinVerified) {
-    const lockMinutes = Math.max(1, Math.ceil(lockCountdown / 60));
-
     return (
       <div className="min-h-[100dvh] w-full bg-linear-to-b from-[#fdf8f0] via-[#faf4ea] to-[#f3e8d7] flex flex-col justify-center items-center px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] select-none">
         {/* Top Brand Row */}
@@ -1052,21 +1054,33 @@ export function TableClient({
             </p>
 
             {isLocked ? (
-              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 mb-2 text-left animate-fade-in">
-                <div className="flex items-center gap-2 text-rose-700 font-black mb-1 text-sm">
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 mb-2 text-left animate-fade-in space-y-3">
+                <div className="flex items-center gap-2 text-rose-700 font-black text-sm">
                   <AlertTriangle className="w-5 h-5 shrink-0" />
-                  <span>{language === 'hi' ? 'टेबल लॉक है' : 'Table Locked'}</span>
+                  <span>{language === 'hi' ? 'पिन ब्लॉक हो गया है' : 'PIN Blocked'}</span>
                 </div>
-                <p className="text-xs text-rose-700/90 mb-3 font-medium leading-normal">
-                  {language === 'hi'
-                    ? `कई गलत प्रयासों के कारण टेबल ${lockMinutes} मिनट के लिए लॉक है। कृपया स्टाफ से संपर्क करें।`
-                    : `Too many wrong attempts. Table is locked for ${lockMinutes} minute(s). Please ask your server.`}
+                <p className="text-xs text-rose-800 font-bold leading-relaxed">
+                  {pinError ||
+                    (language === 'hi'
+                      ? '5 बार गलत पिन दर्ज किया गया। यह पिन ब्लॉक हो गया है। टेबल अनलॉक करने के लिए कृपया मैनेजर या एडमिन से नया पिन लें।'
+                      : '5 wrong attempts exceeded. This PIN is blocked. Please get a new PIN from the manager.')}
                 </p>
-                <div className="flex items-center justify-between text-xs font-bold text-rose-800 bg-rose-100/80 p-3 rounded-xl">
-                  <span>{language === 'hi' ? 'शेष समय:' : 'Lock countdown:'}</span>
-                  <span className="font-mono text-sm font-black">
-                    {Math.floor(lockCountdown / 60)}:{(lockCountdown % 60).toString().padStart(2, '0')}
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-amber-900">
+                    {language === 'hi' ? 'मैनेजर से नया पिन प्राप्त करें' : 'Get a new PIN from manager'}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLocked(false);
+                      setPinError(null);
+                      setPin('');
+                      checkExistingSession(true);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[11px] font-black transition cursor-pointer select-none"
+                  >
+                    {language === 'hi' ? 'रीफ्रेश करें' : 'Refresh'}
+                  </button>
                 </div>
               </div>
             ) : (
